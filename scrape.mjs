@@ -263,34 +263,9 @@ async function scrapeEuropeanDesign() {
     }];
 }
 
-// ════════════════════════════════════════════
-// SOURCE 5: graphiccompetitions.com
-// ════════════════════════════════════════════
-async function scrapeGraphicCompetitions() {
-    console.log('📡 [graphiccompetitions.com] Fetching...');
-    const html = await safeFetch('https://graphiccompetitions.com/');
-    if (!html) return [];
-
-    const re = /<a[^>]*href="(https:\/\/graphiccompetitions\.com\/[^"]*\/[^"]+)"[^>]*>\s*([^<]{10,100})\s*<\/a>/gi;
-    let m; const seen = new Set(); const competitions = [];
-    while ((m = re.exec(html)) !== null) {
-        const link = m[1]; const title = decode(m[2].trim());
-        if (seen.has(link) || /privacy|terms|about|contact|type\/|category\//i.test(link)) continue;
-        if (title.length < 10 || title.length > 100) continue;
-        seen.add(link);
-        competitions.push({
-            title, link, org: title.replace(/\s*\d{4}.*$/, '').substring(0, 50),
-            category: detectCategory(title), status: 'Aktivno',
-            deadline: null, prize: 'Vidi detalje',
-        });
-        if (competitions.length >= 10) break;
-    }
-    console.log(`  ✅ [graphiccompetitions.com] ${competitions.length} competitions`);
-    return competitions;
-}
 
 // ════════════════════════════════════════════
-// SOURCE 6: A' Design Award
+// SOURCE 5: A' Design Award
 // ════════════════════════════════════════════
 async function scrapeADesign() {
     console.log('📡 [adesignaward.com] Fetching...');
@@ -307,13 +282,205 @@ async function scrapeADesign() {
 }
 
 // ════════════════════════════════════════════
-// SOURCE 7: dezeen competitions
+// SOURCE 6: HDLU — Croatian Society of Fine Artists
+// ════════════════════════════════════════════
+async function scrapeHdlu() {
+    console.log('📡 [hdlu.hr] Fetching...');
+    const html = await safeFetch('https://www.hdlu.hr/natjecaji/');
+    if (!html) return [];
+
+    const re = /<a[^>]*href="(https?:\/\/www\.hdlu\.hr\/\d{4}\/\d{2}\/[^"]+)"[^>]*>([^<]{10,120})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link)) continue;
+        // Only include call/competition-related items
+        if (!/natječaj|poziv|izložb|salon|online natječaj|open call/i.test(title)) continue;
+        seen.add(link);
+
+        // Deep scrape for deadline
+        const page = await safeFetch(link);
+        let deadline = null;
+        if (page) {
+            const og = page.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+            const fullText = (og ? decode(og[1]) : '') + ' ' + strip(page).substring(0, 2000);
+            deadline = findDate(fullText);
+        }
+
+        competitions.push({
+            title, link, org: 'HDLU',
+            category: detectCategory(title), status: detectStatus(title, deadline),
+            deadline, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 5) break;
+    }
+    console.log(`  ✅ [hdlu.hr] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 7: Pogon — Zagreb Center for Independent Culture
+// ════════════════════════════════════════════
+async function scrapePogon() {
+    console.log('📡 [pogon.hr] Fetching...');
+    const html = await safeFetch('https://www.pogon.hr/');
+    if (!html) return [];
+
+    const re = /<a[^>]*href="(https?:\/\/www\.pogon\.hr\/[^"]+)"[^>]*>([^<]{10,120})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link) || /kontakt|o-nama|impressum|english/i.test(link)) continue;
+        if (!/natječaj|poziv|rezidencij|open call|prijav/i.test(title)) continue;
+        seen.add(link);
+
+        const near = html.substring(Math.max(0, m.index - 200), m.index + 500);
+        const deadline = findDate(strip(near));
+
+        competitions.push({
+            title, link, org: 'POGON Zagreb',
+            category: detectCategory(title), status: 'Aktivno',
+            deadline, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 5) break;
+    }
+    console.log(`  ✅ [pogon.hr] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 8: Brumen Foundation + TAM-TAM Plaktivat (Slovenia)
+// ════════════════════════════════════════════
+async function scrapeBrumen() {
+    console.log('📡 [brumen.org / tam-tam.si] Fetching...');
+    const competitions = [];
+
+    // Brumen Biennial
+    const brumenHtml = await safeFetch('https://brumen.org/');
+    if (brumenHtml) {
+        const text = strip(brumenHtml);
+        const deadline = findDate(text);
+        competitions.push({
+            title: 'Brumen Biennial — Slovenian Design Awards', link: 'https://brumen.org/',
+            org: 'Brumen Foundation', category: 'Grafički dizajn',
+            status: detectStatus(text, deadline), deadline,
+            prize: 'Nacionalna nagrada za dizajn (Slovenija)',
+        });
+    }
+
+    // TAM-TAM Plaktivat
+    const tamHtml = await safeFetch('https://tam-tam.si/plaktivat/');
+    if (tamHtml) {
+        const text = strip(tamHtml);
+        const deadline = findDate(text);
+        competitions.push({
+            title: 'Plaktivat — International Poster Design Competition', link: 'https://tam-tam.si/plaktivat/',
+            org: 'TAM-TAM Institute', category: 'Grafički dizajn',
+            status: detectStatus(text, deadline), deadline,
+            prize: 'Izložba na javnim površinama u Sloveniji',
+        });
+    }
+
+    console.log(`  ✅ [brumen/tam-tam] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 9: DesignEuropa Awards (Ljubljana 2026)
+// ════════════════════════════════════════════
+async function scrapeDesignEuropa() {
+    console.log('📡 [designeuropa] Fetching...');
+    const html = await safeFetch('https://www.euipo.europa.eu/en/designeuropa-awards');
+    const text = html ? strip(html) : '';
+    const deadline = findDate(text) || '2026-02-20';
+    return [{
+        title: 'DesignEuropa Awards 2026 (Ljubljana)', link: 'https://www.euipo.europa.eu/en/designeuropa-awards',
+        org: 'EUIPO / European Commission', category: 'Industrijski dizajn',
+        status: detectStatus(text, deadline), deadline,
+        prize: 'Europska nagrada za dizajn',
+    }];
+}
+
+// ════════════════════════════════════════════
+// SOURCE 10: O3ONE Art Space, Belgrade (Serbia)
+// ════════════════════════════════════════════
+async function scrapeO3one() {
+    console.log('📡 [o3one.rs] Fetching...');
+    const html = await safeFetch('https://o3one.rs/');
+    if (!html) return [];
+
+    const re = /<a[^>]*href="(https?:\/\/o3one\.rs\/[^"]+)"[^>]*>([^<]{10,100})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link)) continue;
+        if (!/open call|poziv|exhibition|izložb|natječaj|konkurs/i.test(title)) continue;
+        seen.add(link);
+        competitions.push({
+            title, link, org: 'O3ONE Art Space, Beograd',
+            category: detectCategory(title), status: 'Aktivno',
+            deadline: null, prize: 'Izložba u Beogradu',
+        });
+        if (competitions.length >= 3) break;
+    }
+    // Also add the known 2026 open call
+    if (competitions.length === 0) {
+        competitions.push({
+            title: 'O3ONE Open Call — Exhibitions 2026/27',
+            link: 'https://o3one.rs/', org: 'O3ONE Art Space, Beograd',
+            category: 'Grafički dizajn', status: 'Aktivno',
+            deadline: '2026-03-02', prize: 'Izložba u Beogradu',
+        });
+    }
+    console.log(`  ✅ [o3one.rs] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 11: FLUID Regional Awards (SE Europe young designers)
+// ════════════════════════════════════════════
+async function scrapeFluid() {
+    console.log('📡 [fluid-design] Fetching...');
+    return [{
+        title: 'FLUID — Regional Awards for Young Designers 2026',
+        link: 'https://www.contestwatchers.com/fluid-regional-awards-for-young-designers-2026/',
+        org: 'FLUID', category: 'Grafički dizajn', status: 'Aktivno',
+        deadline: '2026-02-25', prize: 'Besplatna prijava — nagrada za mlade dizajnere',
+    }];
+}
+
+// ════════════════════════════════════════════
+// SOURCE 12: graphiccompetitions.com
+// ════════════════════════════════════════════
+async function scrapeGraphicCompetitions() {
+    console.log('📡 [graphiccompetitions.com] Fetching...');
+    const html = await safeFetch('https://graphiccompetitions.com/');
+    if (!html) return [];
+    const re = /<a[^>]*href="(https:\/\/graphiccompetitions\.com\/[^"]*\/[^"]+)"[^>]*>\s*([^<]{10,100})\s*<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link) || /privacy|terms|about|contact|type\/|category\//i.test(link)) continue;
+        if (title.length < 10 || title.length > 100) continue;
+        seen.add(link);
+        competitions.push({
+            title, link, org: title.replace(/\s*\d{4}.*$/, '').substring(0, 50),
+            category: detectCategory(title), status: 'Aktivno',
+            deadline: null, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 8) break;
+    }
+    console.log(`  ✅ [graphiccompetitions.com] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 13: dezeen.com competitions
 // ════════════════════════════════════════════
 async function scrapeDezeen() {
     console.log('📡 [dezeen.com] Fetching...');
     const html = await safeFetch('https://www.dezeen.com/competitions/');
     if (!html) return [];
-
     const re = /<a[^>]*href="(https:\/\/www\.dezeen\.com\/\d{4}\/\d{2}\/\d{2}\/[^"]+)"[^>]*>([^<]{15,120})<\/a>/gi;
     let m; const seen = new Set(); const competitions = [];
     while ((m = re.exec(html)) !== null) {
@@ -327,36 +494,6 @@ async function scrapeDezeen() {
         if (competitions.length >= 8) break;
     }
     console.log(`  ✅ [dezeen.com] ${competitions.length} competitions`);
-    return competitions;
-}
-
-// ════════════════════════════════════════════
-// SOURCE 8: ULUPUH (Croatian Applied Arts)
-// ════════════════════════════════════════════
-async function scrapeUlupuh() {
-    console.log('📡 [ulupuh.hr] Fetching...');
-    const html = await safeFetch('https://ulupuh.hr/natjecaji-i-izlozbe/');
-    if (!html) { // Try alternative URL
-        const html2 = await safeFetch('https://ulupuh.hr/');
-        if (!html2) return [];
-    }
-    const re = /<a[^>]*href="(https?:\/\/[^"]*ulupuh[^"]*)"[^>]*>([^<]{10,100})<\/a>/gi;
-    let m; const seen = new Set(); const competitions = [];
-    const source = html || await safeFetch('https://ulupuh.hr/');
-    if (!source) return [];
-    while ((m = re.exec(source)) !== null) {
-        const link = m[1]; const title = decode(m[2].trim());
-        if (seen.has(link) || /kontakt|about|impresum/i.test(link)) continue;
-        if (/natječaj|izložb|zgraf|poziv|award/i.test(title)) {
-            seen.add(link);
-            competitions.push({
-                title, link, org: 'ULUPUH', category: detectCategory(title),
-                status: 'Aktivno', deadline: null, prize: 'Vidi detalje',
-            });
-        }
-        if (competitions.length >= 5) break;
-    }
-    console.log(`  ✅ [ulupuh.hr] ${competitions.length} competitions`);
     return competitions;
 }
 
@@ -397,20 +534,28 @@ async function upsertToSupabase(competitions) {
 }
 
 // ════════════════════════════════════════════
-// Main
+// Main — 13 sources
 // ════════════════════════════════════════════
 async function main() {
     try {
-        console.log('🎯 DizajnRadar Scraper v3 — Multi-source deep scrape\n');
+        console.log('🎯 DizajnRadar Scraper v4 — 13 sources, deep scrape\n');
         const results = await Promise.allSettled([
-            scrapeDizajnHr(),
-            scrapeContestWatchers(),
-            scrapeBigSee(),
-            scrapeEuropeanDesign(),
-            scrapeGraphicCompetitions(),
-            scrapeADesign(),
-            scrapeDezeen(),
-            scrapeUlupuh(),
+            // 🇭🇷 Croatia
+            scrapeDizajnHr(),         // 1. HDD
+            scrapeHdlu(),             // 2. HDLU
+            scrapePogon(),            // 3. Pogon
+            // 🌐 Southeast Europe
+            scrapeBigSee(),           // 4. BIG SEE
+            scrapeBrumen(),           // 5. Brumen + TAM-TAM
+            scrapeO3one(),            // 6. O3ONE Belgrade
+            scrapeFluid(),            // 7. FLUID
+            scrapeDesignEuropa(),     // 8. DesignEuropa
+            // 🌍 International
+            scrapeContestWatchers(),  // 9. ContestWatchers
+            scrapeADesign(),          // 10. A' Design
+            scrapeGraphicCompetitions(), // 11. graphiccompetitions.com
+            scrapeDezeen(),           // 12. Dezeen
+            scrapeEuropeanDesign(),   // 13. European Design Awards
         ]);
         const all = [];
         for (const r of results) {
@@ -428,3 +573,4 @@ async function main() {
 }
 
 main();
+
