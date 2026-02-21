@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="hr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DizajnRadar — Natječaji za dizajnere u Hrvatskoj</title>
+    <meta name="description"
+        content="Svi natječaji za vizualni identitet, grafički dizajn i ilustraciju u Hrvatskoj — na jednom mjestu.">
+    <meta property="og:title" content="DizajnRadar — Natječaji za dizajnere">
+    <meta property="og:description"
+        content="Svi natječaji za vizualni identitet, grafički dizajn i ilustraciju u Hrvatskoj — na jednom mjestu.">
+    <meta property="og:type" content="website">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .loader {
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #2563eb;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .card-enter {
+            animation: fadeUp 0.4s ease-out both;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body class="text-gray-800 antialiased min-h-screen flex flex-col">
+
+    <div class="max-w-5xl mx-auto p-6 mt-8 flex-1 w-full">
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">DizajnRadar 🎯</h1>
+            <p class="text-lg text-gray-600">Svi natječaji za vizualni identitet, grafički dizajn i ilustraciju na
+                jednom mjestu.</p>
+        </header>
+
+        <nav class="flex justify-center gap-3 mb-10 flex-wrap" aria-label="Filteri natječaja">
+            <button onclick="filterCompetitions('Sve')"
+                class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-blue-600 text-white hover:bg-blue-700 border border-blue-600"
+                id="btn-Sve">Svi natječaji</button>
+            <button onclick="filterCompetitions('Aktivno')"
+                class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                id="btn-Aktivno">Aktivni</button>
+            <button onclick="filterCompetitions('Završeno')"
+                class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                id="btn-Završeno">Završeni</button>
+        </nav>
+
+        <main id="competitions-container" class="grid grid-cols-1 md:grid-cols-2 gap-6" role="main">
+            <div class="col-span-1 md:col-span-2 text-center py-10">
+                <div class="loader"></div>
+                <p class="text-gray-500 mt-4 font-medium">Spajam se na radar i tražim natječaje...</p>
+            </div>
+        </main>
+    </div>
+
+    <footer class="text-center py-6 text-sm text-gray-400 border-t border-gray-100 mt-8">
+        &copy; 2026 DizajnRadar &mdash; Natječaji za dizajnere u Hrvatskoj
+    </footer>
+
+    <script>
+        // ── Supabase konfiguracija ──
+        // VAŽNO: Zamijeni SUPABASE_ANON_KEY ispravnim anon (public) ključem
+        // Pronađi ga u: Supabase Dashboard → Settings → API → anon public key
+        const SUPABASE_URL = 'https://erimkexlkybipsdutsfd.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_9xXcqLj7EtBU1iYLDfMheA_AD54-yML';
+
+        let competitionsData = [];
+
+        // ── Pomoćna funkcija: sprečava XSS ubacivanje ──
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function sanitizeUrl(url) {
+            if (!url) return '#';
+            const trimmed = url.trim();
+            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+            return '#';
+        }
+
+        // 1. Dohvaćanje podataka iz baze
+        async function fetchCompetitions() {
+            const container = document.getElementById('competitions-container');
+
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?select=*`, {
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errBody = await response.text();
+                    console.error('Supabase error:', response.status, errBody);
+                    throw new Error(`Greška ${response.status} — ne mogu dohvatiti podatke s radara.`);
+                }
+
+                competitionsData = await response.json();
+                filterCompetitions('Sve');
+
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="col-span-1 md:col-span-2 text-center py-10 bg-red-50 rounded-xl border border-red-100">
+                        <p class="text-4xl mb-3">⚠️</p>
+                        <p class="text-red-700 font-semibold text-lg">Greška pri učitavanju</p>
+                        <p class="text-red-600 text-sm mt-1">${escapeHtml(error.message)}</p>
+                        <p class="text-gray-500 text-sm mt-3">Provjeri internetsku vezu ili Supabase ključeve u kodu.</p>
+                        <button onclick="fetchCompetitions()" class="mt-4 px-5 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 transition">Pokušaj ponovo</button>
+                    </div>`;
+            }
+        }
+
+        // 2. Iscrtavanje kartica
+        function renderCompetitions(filterStr) {
+            const container = document.getElementById('competitions-container');
+            container.innerHTML = '';
+
+            const filteredData = competitionsData.filter(comp => filterStr === 'Sve' || comp.status === filterStr);
+
+            if (filteredData.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-1 md:col-span-2 text-center py-16">
+                        <p class="text-5xl mb-4">📭</p>
+                        <p class="text-gray-500 font-medium text-lg">Trenutno nema natječaja u ovoj kategoriji.</p>
+                    </div>`;
+                return;
+            }
+
+            filteredData.forEach((comp, i) => {
+                const isAktivno = comp.status === 'Aktivno';
+                const statusClass = isAktivno ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600';
+
+                const title = escapeHtml(comp.title || 'Bez naziva');
+                const org = escapeHtml(comp.org || 'Nepoznat organizator');
+                const category = escapeHtml(comp.category || 'Opći dizajn');
+                const prize = escapeHtml(comp.prize || 'Nije navedeno');
+                const status = escapeHtml(comp.status || 'Nepoznato');
+                const link = sanitizeUrl(comp.link);
+
+                const deadlineDisplay = comp.deadline
+                    ? new Date(comp.deadline).toLocaleDateString('hr-HR')
+                    : 'Do popunjenja / Nije navedeno';
+
+                const card = `
+                    <div class="card-enter bg-white border border-gray-200 p-6 rounded-xl shadow-sm hover:shadow-lg transition-shadow flex flex-col justify-between"
+                         style="animation-delay: ${i * 80}ms">
+                        <div>
+                            <div class="flex justify-between items-start mb-4 gap-4">
+                                <h2 class="text-xl font-bold text-gray-900 leading-tight">${title}</h2>
+                                <span class="px-3 py-1 text-xs font-bold rounded-full whitespace-nowrap ${statusClass}">${status}</span>
+                            </div>
+                            <div class="space-y-2 mb-6 bg-gray-50 p-4 rounded-lg">
+                                <p class="text-sm text-gray-700 flex items-center gap-2">🏢 <span class="font-semibold w-24">Organizator:</span> ${org}</p>
+                                <p class="text-sm text-gray-700 flex items-center gap-2">🎨 <span class="font-semibold w-24">Kategorija:</span> ${category}</p>
+                                <p class="text-sm text-gray-700 flex items-center gap-2">💰 <span class="font-semibold w-24">Nagrada:</span> ${prize}</p>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center pt-4 border-t border-gray-100 mt-auto">
+                            <span class="text-red-600 font-bold text-sm bg-red-50 px-3 py-1 rounded-md">⏳ Rok: ${deadlineDisplay}</span>
+                            <a href="${link}" target="_blank" rel="noopener noreferrer"
+                               class="text-blue-600 hover:text-blue-800 font-bold text-sm flex items-center gap-1 transition-colors">
+                                Detalji i prijava <span aria-hidden="true">&rarr;</span>
+                            </a>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += card;
+            });
+        }
+
+        // 3. Upravljanje filterima
+        function filterCompetitions(status) {
+            ['Sve', 'Aktivno', 'Završeno'].forEach(id => {
+                const btn = document.getElementById('btn-' + id);
+                btn.className = "px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50";
+            });
+
+            const activeBtn = document.getElementById('btn-' + status);
+            activeBtn.className = "px-5 py-2 rounded-md font-medium transition shadow-sm bg-blue-600 text-white hover:bg-blue-700 border border-blue-600";
+
+            renderCompetitions(status);
+        }
+
+        // 4. Pokretanje
+        window.onload = () => fetchCompetitions();
+    </script>
+</body>
+
+</html>
