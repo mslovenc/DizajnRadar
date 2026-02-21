@@ -498,6 +498,240 @@ async function scrapeDezeen() {
 }
 
 // ════════════════════════════════════════════
+// SOURCE 14: Vizkultura.hr — Regional visual arts portal
+// ════════════════════════════════════════════
+async function scrapeVizkultura() {
+    console.log('📡 [vizkultura.hr] Fetching...');
+    const html = await safeFetch('https://vizkultura.hr/tag/natjecaj/');
+    if (!html) return [];
+
+    const re = /<a[^>]*href="(https:\/\/vizkultura\.hr\/[^"]+)"[^>]*>\s*<\/a>\s*<h3[^>]*>([^<]+)<\/h3>|<h3[^>]*>([^<]+)<\/h3>/gi;
+    // Also try simpler pattern
+    const re2 = /<a[^>]*href="(https:\/\/vizkultura\.hr\/[^"]+\/)"/gi;
+    const titleRe = /<h3[^>]*>([^<]+)<\/h3>/gi;
+
+    const seen = new Set(); const competitions = [];
+    let m;
+
+    // Extract article links with their titles
+    const articles = [];
+    const linkMatches = [...html.matchAll(/<a[^>]*href="(https:\/\/vizkultura\.hr\/[^"]+\/)"[^>]*>/gi)];
+    const titleMatches = [...html.matchAll(/<h3[^>]*>([^<]+)<\/h3>/gi)];
+
+    for (const tm of titleMatches) {
+        const title = decode(tm[1].trim());
+        // Find nearest link before this title
+        const nearbyHtml = html.substring(Math.max(0, tm.index - 300), tm.index + 300);
+        const linkMatch = nearbyHtml.match(/href="(https:\/\/vizkultura\.hr\/[^"]+\/)"/i);
+        if (!linkMatch) continue;
+        const link = linkMatch[1];
+        if (seen.has(link) || link.includes('/tag/') || link.includes('/page/')) continue;
+        if (!/natječaj|rezultat|prijav|poziv|nagrada|izložba|zgraf|erste|salon/i.test(title)) continue;
+        seen.add(link);
+
+        // Extract date from nearby text (DD-MM-YYYY format used by vizkultura)
+        const dateMatch = nearbyHtml.match(/(\d{2})-(\d{2})-(\d{4})/);
+        const deadline = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : null;
+
+        competitions.push({
+            title, link, org: 'Vizkultura',
+            category: detectCategory(title), status: detectStatus(title, deadline),
+            deadline, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 8) break;
+    }
+    console.log(`  ✅ [vizkultura.hr] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 15: HURA — Croatian advertising (BalCannes, IdejaX, Effie, Dani komunikacija)
+// ════════════════════════════════════════════
+async function scrapeHura() {
+    console.log('📡 [hura.hr] Fetching...');
+    const html = await safeFetch('https://www.hura.hr/');
+    if (!html) return [];
+
+    const competitions = [];
+    const text = strip(html);
+
+    // Extract known competition entries from page
+    const entries = [
+        { pattern: /balcannes/i, title: 'BalCannes — Kreativno natjecanje za mlade', org: 'HURA' },
+        { pattern: /idejax/i, title: 'IdejaX — Natjecanje za kreativne ideje', org: 'HURA' },
+        { pattern: /effie/i, title: 'Effie Awards Croatia', org: 'HURA / Effie' },
+        { pattern: /dani komunikacija/i, title: 'Dani komunikacija 2026', org: 'HURA' },
+    ];
+
+    for (const entry of entries) {
+        if (entry.pattern.test(text)) {
+            // Find link
+            const linkMatch = html.match(new RegExp(`<a[^>]*href="([^"]+)"[^>]*>[^<]*${entry.pattern.source}`, 'i'));
+            const link = linkMatch ? linkMatch[1] : 'https://www.hura.hr/';
+
+            // Try to find deadline in nearby text
+            const fullLink = link.startsWith('http') ? link : `https://www.hura.hr${link}`;
+            const nearIdx = html.search(entry.pattern);
+            const nearby = nearIdx >= 0 ? html.substring(nearIdx, nearIdx + 500) : '';
+            const deadline = findDate(strip(nearby));
+
+            competitions.push({
+                title: entry.title, link: fullLink, org: entry.org,
+                category: 'Komunikacijski dizajn', status: 'Aktivno',
+                deadline, prize: 'Nagrada za kreativnost',
+            });
+        }
+    }
+    console.log(`  ✅ [hura.hr] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 16: DOS — Slovenian Designers Society
+// ════════════════════════════════════════════
+async function scrapeDos() {
+    console.log('📡 [dos-design.si] Fetching...');
+    const html = await safeFetch('https://dos-design.si/en/');
+    if (!html) return [];
+
+    const re = /<a[^>]*href="(https?:\/\/(?:www\.)?dos-design\.si\/[^"]+)"[^>]*>([^<]{10,100})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link) || /arhiv|about|contact/i.test(link)) continue;
+        if (!/natečaj|nagrada|razstava|award|biennal|oblikoval|presežki/i.test(title)) continue;
+        seen.add(link);
+
+        const near = html.substring(m.index, m.index + 200);
+        const dateMatch = near.match(/\[(\d{2})\.\s*(\d{2})\.\s*(\d{2})\]/);
+        const deadline = dateMatch ? `20${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : null;
+
+        competitions.push({
+            title, link, org: 'DOS — Društvo oblikovalcev Slovenije',
+            category: detectCategory(title), status: detectStatus(title, deadline),
+            deadline, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 5) break;
+    }
+    console.log(`  ✅ [dos-design.si] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 17: Dizajn Zona — Regional design forum (jobs section)
+// ════════════════════════════════════════════
+async function scrapeDizajnZona() {
+    console.log('📡 [dizajnzona.com] Fetching...');
+    const html = await safeFetch('https://www.dizajnzona.com/forums/forum/41-poslovi/');
+    if (!html) return [];
+
+    const re = /<a[^>]*href="(https?:\/\/www\.dizajnzona\.com\/forums\/topic\/[^"]+)"[^>]*>([^<]{10,100})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link)) continue;
+        if (!/logo|vizual|dizajn|natječaj|identitet|ilustraci/i.test(title)) continue;
+        seen.add(link);
+        competitions.push({
+            title, link, org: 'Dizajn Zona forum',
+            category: detectCategory(title), status: 'Aktivno',
+            deadline: null, prize: 'Projektni posao',
+        });
+        if (competitions.length >= 5) break;
+    }
+    console.log(`  ✅ [dizajnzona.com] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 18: Crowdsourcing platforms (99designs, DesignCrowd, LogoArena)
+// ════════════════════════════════════════════
+async function scrapeCrowdsourcing() {
+    console.log('📡 [crowdsourcing platforms] Adding...');
+    return [
+        {
+            title: '99designs — Active Design Contests',
+            link: 'https://99designs.com/contests', org: '99designs / Vista',
+            category: 'Vizualni identitet', status: 'Aktivno',
+            deadline: null, prize: 'Novčana nagrada po natječaju',
+        },
+        {
+            title: 'DesignCrowd — Logo & Identity Contests',
+            link: 'https://www.designcrowd.com/design-contests', org: 'DesignCrowd',
+            category: 'Vizualni identitet', status: 'Aktivno',
+            deadline: null, prize: 'Novčana nagrada po natječaju',
+        },
+    ];
+}
+
+// ════════════════════════════════════════════
+// SOURCE 19: Croatian city portals (Zagreb, Split, Rijeka)
+// ════════════════════════════════════════════
+async function scrapeCityPortals() {
+    console.log('📡 [city portals] Fetching...');
+    const cities = [
+        { url: 'https://www.zagreb.hr/natjecaji/1702', name: 'Grad Zagreb' },
+        { url: 'https://www.split.hr/natjecaji', name: 'Grad Split' },
+        { url: 'https://www.rijeka.hr/teme-za-gradane/natjecaji-i-javni-pozivi/', name: 'Grad Rijeka' },
+    ];
+    const competitions = [];
+    for (const city of cities) {
+        const html = await safeFetch(city.url);
+        if (!html) continue;
+        const re = /<a[^>]*href="([^"]+)"[^>]*>([^<]{15,120})<\/a>/gi;
+        let m;
+        while ((m = re.exec(html)) !== null) {
+            const title = decode(m[2].trim());
+            if (!/vizual|logo|dizajn|identitet|grafičk|oblikovan|ilustraci/i.test(title)) continue;
+            let link = m[1];
+            if (!link.startsWith('http')) link = new URL(link, city.url).href;
+            competitions.push({
+                title, link, org: city.name,
+                category: detectCategory(title), status: 'Aktivno',
+                deadline: findDate(title), prize: 'Javni natječaj',
+            });
+            if (competitions.length >= 3) break;
+        }
+    }
+    console.log(`  ✅ [city portals] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 20: Dexigner — Global design competition directory
+// ════════════════════════════════════════════
+async function scrapeDexigner() {
+    console.log('📡 [dexigner.com] Fetching...');
+    const html = await safeFetch('https://dexigner.com/competitions');
+    if (!html) { // Fallback URL
+        const html2 = await safeFetch('https://www.dexigner.com/directory/cat/Design-Ede/Competitions');
+        if (!html2) return [];
+        return parseDexigner(html2);
+    }
+    return parseDexigner(html);
+}
+function parseDexigner(html) {
+    const re = /<a[^>]*href="([^"]+)"[^>]*>([^<]{15,100})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const title = decode(m[2].trim());
+        let link = m[1];
+        if (!/award|competition|contest|call/i.test(title)) continue;
+        if (seen.has(title.toLowerCase())) continue;
+        seen.add(title.toLowerCase());
+        if (!link.startsWith('http')) link = `https://dexigner.com${link}`;
+        competitions.push({
+            title, link, org: 'Dexigner',
+            category: detectCategory(title), status: 'Aktivno',
+            deadline: null, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 6) break;
+    }
+    console.log(`  ✅ [dexigner.com] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
 // Supabase upsert
 // ════════════════════════════════════════════
 async function upsertToSupabase(competitions) {
@@ -534,28 +768,40 @@ async function upsertToSupabase(competitions) {
 }
 
 // ════════════════════════════════════════════
-// Main — 13 sources
+// Main — 20 sources
 // ════════════════════════════════════════════
 async function main() {
     try {
-        console.log('🎯 DizajnRadar Scraper v4 — 13 sources, deep scrape\n');
+        console.log('🎯 DizajnRadar Scraper v5 — 20 sources, deep scrape\n');
         const results = await Promise.allSettled([
-            // 🇭🇷 Croatia
+            // 🇭🇷 Croatia — Design associations
             scrapeDizajnHr(),         // 1. HDD
             scrapeHdlu(),             // 2. HDLU
             scrapePogon(),            // 3. Pogon
+            scrapeVizkultura(),       // 4. Vizkultura
+            scrapeHura(),             // 5. HURA (BalCannes, IdejaX, Effie)
+            // 🇭🇷 Croatia — Public sector
+            scrapeCityPortals(),      // 6. Zagreb, Split, Rijeka
+            // 🇸🇮 Slovenia
+            scrapeBrumen(),           // 7. Brumen + TAM-TAM
+            scrapeDos(),              // 8. DOS
+            // 🇷🇸 Serbia
+            scrapeO3one(),            // 9. O3ONE Belgrade
             // 🌐 Southeast Europe
-            scrapeBigSee(),           // 4. BIG SEE
-            scrapeBrumen(),           // 5. Brumen + TAM-TAM
-            scrapeO3one(),            // 6. O3ONE Belgrade
-            scrapeFluid(),            // 7. FLUID
-            scrapeDesignEuropa(),     // 8. DesignEuropa
-            // 🌍 International
-            scrapeContestWatchers(),  // 9. ContestWatchers
-            scrapeADesign(),          // 10. A' Design
-            scrapeGraphicCompetitions(), // 11. graphiccompetitions.com
-            scrapeDezeen(),           // 12. Dezeen
-            scrapeEuropeanDesign(),   // 13. European Design Awards
+            scrapeBigSee(),           // 10. BIG SEE
+            scrapeFluid(),            // 11. FLUID
+            scrapeDesignEuropa(),     // 12. DesignEuropa
+            // 🌍 International — Directories
+            scrapeContestWatchers(),  // 13. ContestWatchers
+            scrapeADesign(),          // 14. A' Design
+            scrapeGraphicCompetitions(), // 15. graphiccompetitions.com
+            scrapeDezeen(),           // 16. Dezeen
+            scrapeEuropeanDesign(),   // 17. European Design Awards
+            scrapeDexigner(),         // 18. Dexigner
+            // 🌍 International — Crowdsourcing
+            scrapeCrowdsourcing(),    // 19. 99designs + DesignCrowd
+            // 🌐 Regional — Forums
+            scrapeDizajnZona(),       // 20. Dizajn Zona
         ]);
         const all = [];
         for (const r of results) {
