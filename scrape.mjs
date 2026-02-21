@@ -183,12 +183,22 @@ async function scrapeContestWatchers() {
         let externalLink = e.link;
         if (pageHtml) {
             const text = strip(pageHtml.replace(/<script[\s\S]*?<\/script>/gi, ''));
-            // Look for deadline in page
-            const dlMatch = text.match(/deadline[:\s]*([^.!?\n]{5,60})/i);
-            deadline = findDate(dlMatch ? dlMatch[1] : text);
-            // Try to find external "enter" / "submit" link
-            const extMatch = pageHtml.match(/<a[^>]*href="(https?:\/\/(?!www\.contestwatchers)[^"]+)"[^>]*>[^<]*(?:enter|submit|visit|official|website|apply)[^<]*/i);
-            if (extMatch) externalLink = extMatch[1];
+            // ContestWatchers uses "Contests Expiring on 8 May 2026" and "Closing on [DATE]"
+            const expiringMatch = text.match(/(?:expiring|closing|expires?|closes?)\s+(?:on\s+)?(\d{1,2}\s+\w+\s+\d{4})/i);
+            if (expiringMatch) deadline = findDate(expiringMatch[1]);
+            // Also try "deadline: [date]" or just search full text
+            if (!deadline) {
+                const dlMatch = text.match(/deadline[:\s]*([^.!?\n]{5,60})/i);
+                deadline = findDate(dlMatch ? dlMatch[1] : text.substring(0, 3000));
+            }
+            // Find "Visit Official Website" link
+            const visitMatch = pageHtml.match(/<a[^>]*href="(https?:\/\/(?!www\.contestwatchers)[^"]+)"[^>]*>\s*Visit\s+Official\s+Website/i);
+            if (visitMatch) externalLink = visitMatch[1];
+            // Fallback: any external link with "official", "enter", "submit", "apply", "website"
+            if (externalLink === e.link) {
+                const extMatch = pageHtml.match(/<a[^>]*href="(https?:\/\/(?!www\.contestwatchers)[^"]+)"[^>]*>[^<]*(?:enter|submit|visit|official|website|apply)[^<]*/i);
+                if (extMatch) externalLink = extMatch[1];
+            }
         }
         if (!deadline) deadline = fromRemaining(e.remaining);
 
