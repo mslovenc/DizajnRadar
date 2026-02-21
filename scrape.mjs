@@ -1,286 +1,353 @@
-// DizajnRadar Scraper — Multi-source competition scraper
-// Sources: dizajn.hr (Croatia), contestwatchers.com (International), bigsee.eu (Regional)
+// DizajnRadar Scraper v3 — Multi-source with deep deadline extraction
+// Sources: dizajn.hr, contestwatchers.com, bigsee.eu, europeandesign.org,
+//          graphiccompetitions.com, a]designaward.com, dezeen.com
 // Usage: node scrape.mjs
 // Env: SUPABASE_URL, SUPABASE_KEY
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://erimkexlkybipsdutsfd.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (like Gecko) Chrome/131.0 Safari/537.36';
 
-// Decode HTML entities
-function decodeEntities(str) {
-    const entities = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#039;': "'", '&apos;': "'", '&#8211;': '–', '&#8212;': '—', '&#8217;': "'", '&#8220;': '"', '&#8221;': '"', '&ndash;': '–', '&mdash;': '—', '&#038;': '&', '&nbsp;': ' ' };
-    return str.replace(/&#?\w+;/g, m => entities[m] || m);
+// ── Utils ──
+function decode(str) {
+    const e = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#039;': "'", '&#8211;': '–', '&#8212;': '—', '&#8217;': "'", '&#8220;': '"', '&#8221;': '"', '&ndash;': '–', '&mdash;': '—', '&#038;': '&', '&nbsp;': ' ', '&apos;': "'" };
+    return str.replace(/&#?\w+;/g, m => e[m] || m);
 }
+function strip(html) { return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); }
 
-function stripHtml(html) {
-    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// ════════════════════════════════════════════
-// SOURCE 1: dizajn.hr (Croatian Designers Association)
-// ════════════════════════════════════════════
-async function scrapeDizajnHr() {
-    console.log('📡 [dizajn.hr] Fetching...');
-    const res = await fetch('https://dizajn.hr/natjecaji/');
-    if (!res.ok) { console.error(`  ❌ HTTP ${res.status}`); return []; }
-    const html = await res.text();
-
-    const h2Regex = /<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<\/h2>/gi;
-    let match;
-    const entries = [];
-    while ((match = h2Regex.exec(html)) !== null) {
-        entries.push({ link: match[1], title: match[2].trim(), index: match.index });
-    }
-
-    const competitions = [];
-    for (let i = 0; i < Math.min(entries.length, 20); i++) {
-        const entry = entries[i];
-        const start = entry.index;
-        const end = i + 1 < entries.length ? entries[i + 1].index : html.length;
-        const block = html.substring(start, end);
-        const desc = stripHtml(block.replace(/<h2[\s\S]*?<\/h2>/gi, '')).substring(0, 400);
-
-        const title = decodeEntities(entry.title);
-        const deadline = extractDeadline(desc);
-        const status = detectStatus(title + ' ' + desc, deadline);
-
-        // Skip clearly old/irrelevant items
-        if (deadline) {
-            const diff = (new Date() - new Date(deadline)) / (1000 * 60 * 60 * 24);
-            if (diff > 180) continue; // Skip if > 6 months old
-        }
-
-        competitions.push({
-            title,
-            link: entry.link, // dizajn.hr blog posts ARE the detail pages with all competition info
-            org: extractOrg(desc) || 'HDD / dizajn.hr',
-            category: detectCategory(title + ' ' + desc),
-            status,
-            deadline,
-            prize: extractPrize(desc),
-        });
-    }
-    console.log(`  ✅ [dizajn.hr] Found ${competitions.length} competitions`);
-    return competitions;
-}
-
-// ════════════════════════════════════════════
-// SOURCE 2: contestwatchers.com (International graphic design)
-// ════════════════════════════════════════════
-async function scrapeContestWatchers() {
-    console.log('📡 [contestwatchers.com] Fetching...');
-    const url = 'https://www.contestwatchers.com/category/visual-arts/graphic-design/';
-    const res = await fetch(url, { headers: { 'User-Agent': 'DizajnRadar/1.0' } });
-    if (!res.ok) { console.error(`  ❌ HTTP ${res.status}`); return []; }
-    const html = await res.text();
-
-    const competitions = [];
-    // Each contest is in an <article> or <h2>/<h3> with a link
-    const entryRegex = /<h[23][^>]*>\s*<a[^>]*href="(https:\/\/www\.contestwatchers\.com\/[^"]+)"[^>]*>([^<]+)<\/a>/gi;
-    let match;
-    while ((match = entryRegex.exec(html)) !== null) {
-        const cwLink = match[1];
-        const title = decodeEntities(match[2].trim());
-
-        // Skip navigation/category links
-        if (cwLink.includes('/category/') || cwLink.includes('/page/') || cwLink.includes('/feed/')) continue;
-
-        // Get remaining time from nearby text
-        const nearbyText = html.substring(match.index, match.index + 500);
-        const timeMatch = nearbyText.match(/(\d+\+?\s*(?:days?|weeks?|months?)\s*remaining)/i);
-        const isFree = nearbyText.includes('Free');
-
-        competitions.push({
-            title,
-            link: cwLink, // Links to detail page with full info + external application link
-            org: extractOrgFromTitle(title),
-            category: detectCategory(title),
-            status: 'Aktivno',
-            deadline: estimateDeadlineFromRemaining(timeMatch ? timeMatch[1] : null),
-            prize: isFree ? 'Besplatna prijava' : 'Vidi detalje',
-        });
-    }
-
-    console.log(`  ✅ [contestwatchers.com] Found ${competitions.length} competitions`);
-    return competitions;
-}
-
-// ════════════════════════════════════════════
-// SOURCE 3: bigsee.eu (BIG SEE — Southeast Europe)
-// ════════════════════════════════════════════
-async function scrapeBigSee() {
-    console.log('📡 [bigsee.eu] Fetching...');
-    const urls = [
-        'https://bigsee.eu/big-see-architecture-award/',
-        'https://bigsee.eu/big-see-product-design-award/',
-        'https://bigsee.eu/big-see-visionaries/',
-    ];
-
-    const competitions = [];
-    for (const url of urls) {
-        try {
-            const res = await fetch(url, { headers: { 'User-Agent': 'DizajnRadar/1.0' } });
-            if (!res.ok) continue;
-            const html = await res.text();
-
-            // Extract page title + any call to action
-            const titleMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/i) || html.match(/<title>([^<]+)<\/title>/i);
-            if (!titleMatch) continue;
-
-            const title = decodeEntities(titleMatch[1].trim().replace(/\s*[-–|].*$/, ''));
-            const deadlineMatch = html.match(/deadline[:\s]*([\w\s,]+\d{4})/i);
-
-            competitions.push({
-                title: title || 'BIG SEE Award',
-                link: url,
-                org: 'BIG SEE / Zavod Big',
-                category: detectCategory(title + ' ' + url),
-                status: 'Aktivno',
-                deadline: deadlineMatch ? parseEnglishDate(deadlineMatch[1]) : null,
-                prize: 'Međunarodna nagrada',
-            });
-        } catch (e) {
-            console.error(`  ⚠️ [bigsee.eu] Error on ${url}: ${e.message}`);
-        }
-    }
-    console.log(`  ✅ [bigsee.eu] Found ${competitions.length} competitions`);
-    return competitions;
-}
-
-// ════════════════════════════════════════════
-// SOURCE 4: European Design Awards
-// ════════════════════════════════════════════
-async function scrapeEuropeanDesign() {
-    console.log('📡 [europeandesign.org] Fetching...');
+async function safeFetch(url) {
     try {
-        const res = await fetch('https://europeandesign.org/', { headers: { 'User-Agent': 'DizajnRadar/1.0' } });
-        if (!res.ok) { console.error(`  ❌ HTTP ${res.status}`); return []; }
-        const html = await res.text();
-
-        const competitions = [];
-        // Look for any open call / submit links
-        const submitMatch = html.match(/(?:submit|enter|call for entries|open call)[^<]*<\/a>/gi);
-        const deadlineMatch = html.match(/deadline[:\s]*([\w\s,]+\d{4})/i);
-
-        competitions.push({
-            title: 'European Design Awards 2026',
-            link: 'https://europeandesign.org/',
-            org: 'European Design Awards',
-            category: 'Grafički dizajn',
-            status: 'Aktivno',
-            deadline: deadlineMatch ? parseEnglishDate(deadlineMatch[1]) : null,
-            prize: 'Europska nagrada za dizajn',
-        });
-
-        console.log(`  ✅ [europeandesign.org] Found ${competitions.length} competitions`);
-        return competitions;
-    } catch (e) {
-        console.error(`  ⚠️ [europeandesign.org] Error: ${e.message}`);
-        return [];
-    }
+        const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
+        return r.ok ? await r.text() : null;
+    } catch { return null; }
 }
 
-// ════════════════════════════════════════════
-// Helper functions
-// ════════════════════════════════════════════
+// ── Date extraction (Croatian + English) ──
+const CRO = { 'siječnja': '01', 'veljače': '02', 'ožujka': '03', 'travnja': '04', 'svibnja': '05', 'lipnja': '06', 'srpnja': '07', 'kolovoza': '08', 'rujna': '09', 'listopada': '10', 'studenoga': '11', 'studenog': '11', 'prosinca': '12' };
+const ENG = { january: '01', february: '02', march: '03', april: '04', may: '05', june: '06', july: '07', august: '08', september: '09', october: '10', november: '11', december: '12', jan: '01', feb: '02', mar: '03', apr: '04', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
 
-function detectCategory(text) {
-    const t = text.toLowerCase();
-    if (t.includes('vizualni identitet') || t.includes('visual identity') || t.includes('logotip') || t.includes('brand')) return 'Vizualni identitet';
-    if (t.includes('ilustraci') || t.includes('illustrat')) return 'Ilustracija';
-    if (t.includes('knjig') || t.includes('book')) return 'Dizajn knjige';
-    if (t.includes('ux') || t.includes('ui') || t.includes('web') || t.includes('digital') || t.includes('interaction')) return 'UX/UI dizajn';
-    if (t.includes('plakat') || t.includes('poster')) return 'Grafički dizajn';
-    if (t.includes('modni') || t.includes('fashion') || t.includes('moda')) return 'Modni dizajn';
-    if (t.includes('produkt') || t.includes('product') || t.includes('industrijski') || t.includes('industrial')) return 'Industrijski dizajn';
-    if (t.includes('architectur') || t.includes('arhitektur') || t.includes('interior')) return 'Arhitektura';
-    if (t.includes('typograph') || t.includes('tipografi') || t.includes('type') || t.includes('font')) return 'Tipografija';
-    if (t.includes('packaging') || t.includes('package') || t.includes('ambalaž')) return 'Dizajn ambalaže';
+function findDate(text) {
+    if (!text) return null;
+    // "26. siječnja 2026" or "5. prosinca 2025"
+    let m = text.match(/(\d{1,2})\.\s*(siječnja|veljače|ožujka|travnja|svibnja|lipnja|srpnja|kolovoza|rujna|listopada|studenoga|studenog|prosinca)\s*(\d{4})/i);
+    if (m && CRO[m[2].toLowerCase()]) return `${m[3]}-${CRO[m[2].toLowerCase()]}-${m[1].padStart(2, '0')}`;
+    // "5.12.2025"
+    m = text.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    // "February 20, 2026" or "20 February 2026"
+    m = text.match(/(\w+)\s+(\d{1,2}),?\s*(\d{4})/i);
+    if (m && ENG[m[1].toLowerCase()]) return `${m[3]}-${ENG[m[1].toLowerCase()]}-${m[2].padStart(2, '0')}`;
+    m = text.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/i);
+    if (m && ENG[m[2].toLowerCase()]) return `${m[3]}-${ENG[m[2].toLowerCase()]}-${m[1].padStart(2, '0')}`;
+    // "2026-02-20"
+    m = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[0];
+    return null;
+}
+
+function fromRemaining(str) {
+    if (!str) return null;
+    const m = str.match(/(\d+)\+?\s*(day|week|month)/i);
+    if (!m) return null;
+    const d = new Date(); const n = parseInt(m[1]);
+    if (m[2][0] === 'd') d.setDate(d.getDate() + n);
+    else if (m[2][0] === 'w') d.setDate(d.getDate() + n * 7);
+    else d.setMonth(d.getMonth() + n);
+    return d.toISOString().split('T')[0];
+}
+
+function isStale(deadline) {
+    if (!deadline) return false;
+    return (new Date() - new Date(deadline)) / 864e5 > 180;
+}
+
+function detectCategory(t) {
+    t = t.toLowerCase();
+    if (/vizualni identitet|visual identity|logotip|brand/i.test(t)) return 'Vizualni identitet';
+    if (/ilustraci|illustrat/i.test(t)) return 'Ilustracija';
+    if (/knjig|book/i.test(t)) return 'Dizajn knjige';
+    if (/\bux\b|\bui\b|web|digital|interaction/i.test(t)) return 'UX/UI dizajn';
+    if (/plakat|poster/i.test(t)) return 'Grafički dizajn';
+    if (/modn|fashion/i.test(t)) return 'Modni dizajn';
+    if (/produkt|product|industrijski|industrial/i.test(t)) return 'Industrijski dizajn';
+    if (/architectur|arhitektur|interior/i.test(t)) return 'Arhitektura';
+    if (/typograph|tipografi|type design|font/i.test(t)) return 'Tipografija';
+    if (/packaging|package|ambalaž/i.test(t)) return 'Dizajn ambalaže';
+    if (/communicat|komunikaci/i.test(t)) return 'Komunikacijski dizajn';
     return 'Grafički dizajn';
 }
 
 function detectStatus(text, deadline) {
     const t = text.toLowerCase();
-    if (t.includes('rezultat') || t.includes('odabran') || t.includes('proglašen') || t.includes('završen') || t.includes('winner') || t.includes('results')) return 'Završeno';
-    if (deadline) {
-        const diff = (new Date() - new Date(deadline)) / (1000 * 60 * 60 * 24);
-        if (diff > 30) return 'Završeno';
-    }
+    if (/rezultat|odabran|proglašen|završen|winner|result|selected|awarded/i.test(t)) return 'Završeno';
+    if (deadline && (new Date() - new Date(deadline)) / 864e5 > 14) return 'Završeno';
     return 'Aktivno';
 }
 
-const CRO_MONTHS = {
-    'siječnja': '01', 'veljače': '02', 'ožujka': '03', 'travnja': '04',
-    'svibnja': '05', 'lipnja': '06', 'srpnja': '07', 'kolovoza': '08',
-    'rujna': '09', 'listopada': '10', 'studenoga': '11', 'studenog': '11', 'prosinca': '12',
-};
-
-function extractDeadline(text) {
-    const longMatch = text.match(/(\d{1,2})\.\s*(siječnja|veljače|ožujka|travnja|svibnja|lipnja|srpnja|kolovoza|rujna|listopada|studenoga|studenog|prosinca)\s*(\d{4})/i);
-    if (longMatch) {
-        const m = CRO_MONTHS[longMatch[2].toLowerCase()];
-        if (m) return `${longMatch[3]}-${m}-${longMatch[1].padStart(2, '0')}`;
-    }
-    const shortMatch = text.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-    if (shortMatch) return `${shortMatch[3]}-${shortMatch[2].padStart(2, '0')}-${shortMatch[1].padStart(2, '0')}`;
-    return null;
-}
-
-const ENG_MONTHS = {
-    'january': '01', 'february': '02', 'march': '03', 'april': '04', 'may': '05', 'june': '06',
-    'july': '07', 'august': '08', 'september': '09', 'october': '10', 'november': '11', 'december': '12',
-    'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'jun': '06', 'jul': '07',
-    'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12',
-};
-
-function parseEnglishDate(str) {
-    if (!str) return null;
-    const m = str.match(/(\w+)\s+(\d{1,2}),?\s*(\d{4})/i);
-    if (m) {
-        const month = ENG_MONTHS[m[1].toLowerCase()];
-        if (month) return `${m[3]}-${month}-${m[2].padStart(2, '0')}`;
-    }
-    const m2 = str.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/i);
-    if (m2) {
-        const month = ENG_MONTHS[m2[2].toLowerCase()];
-        if (month) return `${m2[3]}-${month}-${m2[1].padStart(2, '0')}`;
-    }
-    return null;
-}
-
-function estimateDeadlineFromRemaining(remainingStr) {
-    if (!remainingStr) return null;
-    const now = new Date();
-    const m = remainingStr.match(/(\d+)\+?\s*(day|week|month)/i);
-    if (!m) return null;
-    const n = parseInt(m[1]);
-    const unit = m[2].toLowerCase();
-    if (unit.startsWith('day')) now.setDate(now.getDate() + n);
-    else if (unit.startsWith('week')) now.setDate(now.getDate() + n * 7);
-    else if (unit.startsWith('month')) now.setMonth(now.getMonth() + n);
-    return now.toISOString().split('T')[0];
+function extractPrize(text) {
+    const m = text.match(/([\d.,]+)\s*(EUR|€|eura)/i);
+    if (m) return `${m[1]} EUR`;
+    if (/nagrada|naknada|award|prize/i.test(text)) return 'Da (vidi detalje)';
+    return 'Nije navedeno';
 }
 
 function extractOrg(text) {
     const patterns = [
         /(?:organizator|raspisivač|provoditelj)[:\s]+([A-ZČĆŽŠĐ][^\.,;]{3,40})/i,
-        /(Grad\s+\w+)/i, /(HDD|HDLU|HAC|HAKOM|NSK|KGZ)/, /(Hrvatsko\s+\w+\s+\w+)/i,
-        /(Knjižnice\s+grada\s+\w+)/i, /(POGON|Školska knjiga|ULUPUH)/i,
+        /(POGON|Školska knjiga|ULUPUH|NSK|HDD|HDLU|HAC|HAKOM|KGZ)/,
+        /(Grad\s+\w+)/i, /(Hrvatsko\s+\w+\s+\w+)/i,
+        /(Knjižnice\s+grada\s+\w+)/i,
     ];
     for (const p of patterns) { const m = text.match(p); if (m) return m[1].trim(); }
     return null;
 }
 
-function extractOrgFromTitle(title) {
-    const m = title.match(/^([^–—:-]+(?:Award|Competition|Contest|Awards))/i);
-    return m ? m[1].trim() : null;
+// ════════════════════════════════════════════
+// SOURCE 1: dizajn.hr — with deep page scraping for deadlines
+// ════════════════════════════════════════════
+async function scrapeDizajnHr() {
+    console.log('📡 [dizajn.hr] Fetching listing...');
+    const html = await safeFetch('https://dizajn.hr/natjecaji/');
+    if (!html) return [];
+
+    const h2Re = /<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<\/h2>/gi;
+    let m; const entries = [];
+    while ((m = h2Re.exec(html)) !== null) entries.push({ link: m[1], title: decode(m[2].trim()), idx: m.index });
+
+    const competitions = [];
+    // Follow each blog page (up to 15) to get OG description which contains deadlines
+    const toFetch = entries.slice(0, 15);
+    console.log(`  📄 Fetching ${toFetch.length} detail pages for deadlines...`);
+
+    const pages = await Promise.allSettled(toFetch.map(e => safeFetch(e.link)));
+
+    for (let i = 0; i < toFetch.length; i++) {
+        const entry = toFetch[i];
+        const pageHtml = pages[i].status === 'fulfilled' ? pages[i].value : null;
+
+        // Get OG description + full page text for deadline extraction
+        let fullText = '';
+        if (pageHtml) {
+            const ogMatch = pageHtml.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+            const bodyText = strip(pageHtml.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, ''));
+            fullText = (ogMatch ? decode(ogMatch[1]) : '') + ' ' + bodyText.substring(0, 2000);
+        } else {
+            // Fallback: use listing snippet
+            const start = entry.idx;
+            const end = i + 1 < entries.length ? entries[i + 1].idx : html.length;
+            fullText = strip(html.substring(start, end).replace(/<h2[\s\S]*?<\/h2>/gi, '')).substring(0, 500);
+        }
+
+        const deadline = findDate(fullText);
+        const status = detectStatus(entry.title + ' ' + fullText, deadline);
+        if (isStale(deadline)) continue;
+
+        competitions.push({
+            title: entry.title, link: entry.link,
+            org: extractOrg(fullText) || 'HDD / dizajn.hr',
+            category: detectCategory(entry.title + ' ' + fullText),
+            status, deadline, prize: extractPrize(fullText),
+        });
+    }
+    console.log(`  ✅ [dizajn.hr] ${competitions.length} competitions`);
+    return competitions;
 }
 
-function extractPrize(text) {
-    const m = text.match(/(\d[\d.,]*)\s*(EUR|€|eura|kuna|HRK)/i);
-    if (m) return `${m[1]} ${m[2].toUpperCase() === 'EURA' ? 'EUR' : m[2]}`;
-    if (text.toLowerCase().includes('nagrada') || text.toLowerCase().includes('naknada')) return 'Da (vidi detalje)';
-    return 'Nije navedeno';
+// ════════════════════════════════════════════
+// SOURCE 2: contestwatchers.com — with deep scrape for deadlines
+// ════════════════════════════════════════════
+async function scrapeContestWatchers() {
+    console.log('📡 [contestwatchers.com] Fetching...');
+    const html = await safeFetch('https://www.contestwatchers.com/category/visual-arts/graphic-design/');
+    if (!html) return [];
+
+    const re = /<h[23][^>]*>\s*<a[^>]*href="(https:\/\/www\.contestwatchers\.com\/(?!category|page|feed)[^"]+)"[^>]*>([^<]+)<\/a>/gi;
+    let m; const entries = [];
+    while ((m = re.exec(html)) !== null) {
+        const near = html.substring(m.index, m.index + 600);
+        const timeMatch = near.match(/(\d+\+?\s*(?:days?|weeks?|months?)\s*remaining)/i);
+        const isFree = near.includes('Free');
+        entries.push({ link: m[1], title: decode(m[2].trim()), remaining: timeMatch?.[1], free: isFree });
+    }
+
+    // Deep-scrape detail pages for exact deadlines
+    console.log(`  📄 Fetching ${entries.length} detail pages...`);
+    const pages = await Promise.allSettled(entries.map(e => safeFetch(e.link)));
+
+    const competitions = [];
+    for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const pageHtml = pages[i].status === 'fulfilled' ? pages[i].value : null;
+
+        let deadline = null;
+        let externalLink = e.link;
+        if (pageHtml) {
+            const text = strip(pageHtml.replace(/<script[\s\S]*?<\/script>/gi, ''));
+            // Look for deadline in page
+            const dlMatch = text.match(/deadline[:\s]*([^.!?\n]{5,60})/i);
+            deadline = findDate(dlMatch ? dlMatch[1] : text);
+            // Try to find external "enter" / "submit" link
+            const extMatch = pageHtml.match(/<a[^>]*href="(https?:\/\/(?!www\.contestwatchers)[^"]+)"[^>]*>[^<]*(?:enter|submit|visit|official|website|apply)[^<]*/i);
+            if (extMatch) externalLink = extMatch[1];
+        }
+        if (!deadline) deadline = fromRemaining(e.remaining);
+
+        competitions.push({
+            title: e.title, link: externalLink,
+            org: e.title.replace(/\s*\d{4}.*$/, '').replace(/\s*[-–:].*$/, '').substring(0, 50) || 'Međunarodni natječaj',
+            category: detectCategory(e.title),
+            status: 'Aktivno', deadline,
+            prize: e.free ? 'Besplatna prijava' : 'Vidi detalje',
+        });
+    }
+    console.log(`  ✅ [contestwatchers.com] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 3: bigsee.eu — Southeast Europe design awards
+// ════════════════════════════════════════════
+async function scrapeBigSee() {
+    console.log('📡 [bigsee.eu] Fetching...');
+    const urls = [
+        { url: 'https://bigsee.eu/big-see-architecture-award/', cat: 'Arhitektura' },
+        { url: 'https://bigsee.eu/big-see-product-design-award/', cat: 'Industrijski dizajn' },
+        { url: 'https://bigsee.eu/big-see-visionaries/', cat: 'Grafički dizajn' },
+        { url: 'https://bigsee.eu/big-see-interior-design-award/', cat: 'Arhitektura' },
+        { url: 'https://bigsee.eu/big-see-fashion-design-award/', cat: 'Modni dizajn' },
+        { url: 'https://bigsee.eu/big-see-wood-design-award/', cat: 'Industrijski dizajn' },
+    ];
+    const competitions = [];
+    const results = await Promise.allSettled(urls.map(u => safeFetch(u.url)));
+    for (let i = 0; i < urls.length; i++) {
+        const html = results[i].status === 'fulfilled' ? results[i].value : null;
+        if (!html) continue;
+        const titleM = html.match(/<h1[^>]*>([^<]+)<\/h1>/i) || html.match(/<title>([^<]+)<\/title>/i);
+        const title = titleM ? decode(titleM[1].trim().replace(/\s*[-–|].*$/, '')) : 'BIG SEE Award';
+        const text = strip(html.substring(0, 5000));
+        const deadline = findDate(text);
+        competitions.push({
+            title, link: urls[i].url, org: 'BIG SEE / Zavod Big',
+            category: urls[i].cat, status: detectStatus(text, deadline),
+            deadline, prize: 'Međunarodna nagrada',
+        });
+    }
+    console.log(`  ✅ [bigsee.eu] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 4: europeandesign.org
+// ════════════════════════════════════════════
+async function scrapeEuropeanDesign() {
+    console.log('📡 [europeandesign.org] Fetching...');
+    const html = await safeFetch('https://europeandesign.org/');
+    if (!html) return [];
+    const text = strip(html);
+    const deadline = findDate(text);
+    return [{
+        title: 'European Design Awards 2026', link: 'https://europeandesign.org/',
+        org: 'European Design Awards', category: 'Grafički dizajn',
+        status: detectStatus(text, deadline), deadline,
+        prize: 'Europska nagrada za dizajn',
+    }];
+}
+
+// ════════════════════════════════════════════
+// SOURCE 5: graphiccompetitions.com
+// ════════════════════════════════════════════
+async function scrapeGraphicCompetitions() {
+    console.log('📡 [graphiccompetitions.com] Fetching...');
+    const html = await safeFetch('https://graphiccompetitions.com/');
+    if (!html) return [];
+
+    const re = /<a[^>]*href="(https:\/\/graphiccompetitions\.com\/[^"]*\/[^"]+)"[^>]*>\s*([^<]{10,100})\s*<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link) || /privacy|terms|about|contact|type\/|category\//i.test(link)) continue;
+        if (title.length < 10 || title.length > 100) continue;
+        seen.add(link);
+        competitions.push({
+            title, link, org: title.replace(/\s*\d{4}.*$/, '').substring(0, 50),
+            category: detectCategory(title), status: 'Aktivno',
+            deadline: null, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 10) break;
+    }
+    console.log(`  ✅ [graphiccompetitions.com] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 6: A' Design Award
+// ════════════════════════════════════════════
+async function scrapeADesign() {
+    console.log('📡 [adesignaward.com] Fetching...');
+    const html = await safeFetch('https://competition.adesignaward.com/registration.html');
+    if (!html) return [];
+    const text = strip(html);
+    const deadline = findDate(text);
+    return [{
+        title: "A' Design Award & Competition 2026", link: 'https://competition.adesignaward.com/registration.html',
+        org: "A' Design Award", category: 'Grafički dizajn',
+        status: 'Aktivno', deadline,
+        prize: 'Međunarodna nagrada + promocija',
+    }];
+}
+
+// ════════════════════════════════════════════
+// SOURCE 7: dezeen competitions
+// ════════════════════════════════════════════
+async function scrapeDezeen() {
+    console.log('📡 [dezeen.com] Fetching...');
+    const html = await safeFetch('https://www.dezeen.com/competitions/');
+    if (!html) return [];
+
+    const re = /<a[^>]*href="(https:\/\/www\.dezeen\.com\/\d{4}\/\d{2}\/\d{2}\/[^"]+)"[^>]*>([^<]{15,120})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link)) continue;
+        seen.add(link);
+        competitions.push({
+            title, link, org: 'Dezeen', category: detectCategory(title),
+            status: 'Aktivno', deadline: null, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 8) break;
+    }
+    console.log(`  ✅ [dezeen.com] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 8: ULUPUH (Croatian Applied Arts)
+// ════════════════════════════════════════════
+async function scrapeUlupuh() {
+    console.log('📡 [ulupuh.hr] Fetching...');
+    const html = await safeFetch('https://ulupuh.hr/natjecaji-i-izlozbe/');
+    if (!html) { // Try alternative URL
+        const html2 = await safeFetch('https://ulupuh.hr/');
+        if (!html2) return [];
+    }
+    const re = /<a[^>]*href="(https?:\/\/[^"]*ulupuh[^"]*)"[^>]*>([^<]{10,100})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    const source = html || await safeFetch('https://ulupuh.hr/');
+    if (!source) return [];
+    while ((m = re.exec(source)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link) || /kontakt|about|impresum/i.test(link)) continue;
+        if (/natječaj|izložb|zgraf|poziv|award/i.test(title)) {
+            seen.add(link);
+            competitions.push({
+                title, link, org: 'ULUPUH', category: detectCategory(title),
+                status: 'Aktivno', deadline: null, prize: 'Vidi detalje',
+            });
+        }
+        if (competitions.length >= 5) break;
+    }
+    console.log(`  ✅ [ulupuh.hr] ${competitions.length} competitions`);
+    return competitions;
 }
 
 // ════════════════════════════════════════════
@@ -289,45 +356,33 @@ function extractPrize(text) {
 async function upsertToSupabase(competitions) {
     if (!SUPABASE_KEY) {
         console.log('⚠️  No SUPABASE_KEY — printing results:');
-        console.table(competitions.map(c => ({ title: c.title.substring(0, 50), status: c.status, deadline: c.deadline, link: c.link.substring(0, 50) })));
+        console.table(competitions.map(c => ({
+            title: c.title.substring(0, 45), status: c.status,
+            deadline: c.deadline || '—', link: c.link.substring(0, 40)
+        })));
         return;
     }
 
     console.log(`💾 Writing ${competitions.length} competitions to Supabase...`);
-    const headers = {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-    };
+    const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
 
-    // Clear ALL old data and replace with fresh scrape
-    const delRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?title=neq.___KEEP___`, {
-        method: 'DELETE', headers,
-    });
-    console.log(`  🗑️  Cleared old data: ${delRes.status}`);
+    // Clear all and replace
+    await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?title=neq.___KEEP___`, { method: 'DELETE', headers });
 
-    // Deduplicate by title (prefer entries with deadlines)
+    // Deduplicate by normalized title
     const seen = new Map();
     for (const c of competitions) {
-        const key = c.title.toLowerCase().replace(/\s+/g, ' ').trim();
-        if (!seen.has(key) || (c.deadline && !seen.get(key).deadline)) {
-            seen.set(key, c);
-        }
+        const key = c.title.toLowerCase().replace(/[^a-zčćžšđ0-9]/g, '').substring(0, 40);
+        if (!seen.has(key) || (c.deadline && !seen.get(key).deadline)) seen.set(key, c);
     }
     const unique = [...seen.values()];
 
-    // Insert
-    const insRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
         method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' },
         body: JSON.stringify(unique),
     });
-
-    if (!insRes.ok) {
-        const errText = await insRes.text();
-        throw new Error(`Insert failed: ${insRes.status} — ${errText}`);
-    }
-
-    const inserted = await insRes.json();
+    if (!res.ok) throw new Error(`Insert failed: ${res.status} — ${await res.text()}`);
+    const inserted = await res.json();
     console.log(`  ✅ Inserted ${inserted.length} unique competitions`);
 }
 
@@ -336,28 +391,24 @@ async function upsertToSupabase(competitions) {
 // ════════════════════════════════════════════
 async function main() {
     try {
-        console.log('🎯 DizajnRadar Scraper — Starting multi-source scrape...\n');
-
+        console.log('🎯 DizajnRadar Scraper v3 — Multi-source deep scrape\n');
         const results = await Promise.allSettled([
             scrapeDizajnHr(),
             scrapeContestWatchers(),
             scrapeBigSee(),
             scrapeEuropeanDesign(),
+            scrapeGraphicCompetitions(),
+            scrapeADesign(),
+            scrapeDezeen(),
+            scrapeUlupuh(),
         ]);
-
         const all = [];
         for (const r of results) {
             if (r.status === 'fulfilled') all.push(...r.value);
-            else console.error('  ❌ Source failed:', r.reason.message);
+            else console.error('  ❌ Source failed:', r.reason?.message);
         }
-
         console.log(`\n📊 Total from all sources: ${all.length}`);
-
-        if (all.length === 0) {
-            console.log('⚠️  No competitions found from any source.');
-            process.exit(1);
-        }
-
+        if (all.length === 0) { console.log('⚠️  No competitions found.'); process.exit(1); }
         await upsertToSupabase(all);
         console.log('\n🎯 All done!');
     } catch (err) {
