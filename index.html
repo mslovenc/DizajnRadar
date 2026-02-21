@@ -70,34 +70,506 @@
                 jednom mjestu.</p>
         </header>
 
-        <nav class="flex justify-center gap-3 mb-4 flex-wrap" aria-label="Filteri natječaja">
-            <button onclick="filterCompetitions('Sve')"
-                class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-blue-600 text-white hover:bg-blue-700 border border-blue-600"
-                id="btn-Sve">Svi natječaji</button>
-            <button onclick="filterCompetitions('Aktivno')"
-                class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-                id="btn-Aktivno">Aktivni</button>
-            <button onclick="filterCompetitions('Završeno')"
-                class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-                id="btn-Završeno">Završeni</button>
-            <button onclick="filterCompetitions('Novosti')"
-                class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-                id="btn-Novosti">📰 Novosti</button>
-        </nav>
-
-        <div class="flex justify-center mb-10">
-            <button onclick="refreshData()" id="btn-refresh"
-                class="px-4 py-2 rounded-md text-sm font-medium transition shadow-sm bg-gray-100 border border-gray-200 text-gray-600 hover:bg-gray-200 flex items-center gap-2">
-                <span id="refresh-icon" class="inline-block transition-transform">🔄</span> Osvježi podatke
-            </button>
+        <!-- Top-level view toggle -->
+        <div class="flex justify-center gap-3 mb-6">
+            <button onclick="showView('natjecaji')" id="view-natjecaji"
+                class="px-6 py-2.5 rounded-lg font-semibold transition shadow-sm bg-gray-900 text-white hover:bg-gray-800 border-2 border-gray-900">
+                🎯 Natječaji</button>
+            <button onclick="showView('resursi')" id="view-resursi"
+                class="px-6 py-2.5 rounded-lg font-semibold transition shadow-sm bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-300">
+                📚 Resursi</button>
         </div>
 
-        <main id="competitions-container" class="grid grid-cols-1 md:grid-cols-2 gap-6" role="main">
-            <div class="col-span-1 md:col-span-2 text-center py-10">
-                <div class="loader"></div>
-                <p class="text-gray-500 mt-4 font-medium">Spajam se na radar i tražim natječaje...</p>
+        <!-- === COMPETITIONS VIEW === -->
+        <div id="natjecaji-view">
+            <nav class="flex justify-center gap-3 mb-4 flex-wrap" aria-label="Filteri natječaja">
+                <button onclick="filterCompetitions('Sve')"
+                    class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-blue-600 text-white hover:bg-blue-700 border border-blue-600"
+                    id="btn-Sve">Svi natječaji</button>
+                <button onclick="filterCompetitions('Aktivno')"
+                    class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    id="btn-Aktivno">Aktivni</button>
+                <button onclick="filterCompetitions('Završeno')"
+                    class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    id="btn-Završeno">Završeni</button>
+                <button onclick="filterCompetitions('Novosti')"
+                    class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    id="btn-Novosti">📰 Novosti</button>
+            </nav>
+
+            <div class="flex justify-center mb-10">
+                <button onclick="refreshData()" id="btn-refresh"
+                    class="px-4 py-2 rounded-md text-sm font-medium transition shadow-sm bg-gray-100 border border-gray-200 text-gray-600 hover:bg-gray-200 flex items-center gap-2">
+                    <span id="refresh-icon" class="inline-block transition-transform">🔄</span> Osvježi podatke
+                </button>
             </div>
-        </main>
+
+            <main id="competitions-container" class="grid grid-cols-1 md:grid-cols-2 gap-6" role="main">
+                <div class="col-span-1 md:col-span-2 text-center py-10">
+                    <div class="loader"></div>
+                    <p class="text-gray-500 mt-4 font-medium">Spajam se na radar i tražim natječaje...</p>
+                </div>
+            </main>
+        </div>
+
+        <!-- === RESURSI (RESOURCES) VIEW === -->
+        <div id="resursi-view" class="hidden">
+            <p class="text-center text-gray-500 mb-8">Kompletni direktorij izvora za dizajnerske natječaje, javnu nabavu
+                i freelance prilike.</p>
+
+            <!-- Category 1: Strukovne udruge -->
+            <section class="mb-10">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">🎨 Strukovne udruge i kulturni
+                    portali</h2>
+                <p class="text-gray-500 text-sm mb-5">Profesionalni natječaji za vizualne identitete institucija,
+                    gradova, festivala i manifestacija.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <a href="https://dizajn.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">HDD — dizajn.hr
+                                </h3>
+                                <p class="text-sm text-gray-500 mt-1">Krovna udruga u HR. Najvažniji profesionalni
+                                    natječaji za vizualne identitete gradova, ministarstava i velikih tvrtki.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://vizkultura.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">Vizkultura —
+                                    vizkultura.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Portal za vizualne umjetnosti i dizajn. Redovito
+                                    prenose otvorene pozive i natječaje diljem regije.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.culturenet.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">Culturenet —
+                                    culturenet.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Web centar hrvatske kulture (Ministarstvo
+                                    kulture). Redovito ažurirana sekcija "Natječaji".</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.hdlu.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">HDLU — hdlu.hr
+                                </h3>
+                                <p class="text-sm text-gray-500 mt-1">Natječaji za ilustracije, plakate te vizualne
+                                    identitete kulturnih projekata.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://ulupuh.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">ULUPUH —
+                                    ulupuh.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Javni i pozivni natječaji za grafički dizajn i
+                                    ilustraciju.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://kulturpunkt.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">Kulturpunkt —
+                                    kulturpunkt.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Nezavisna kultura. Natječaji manjih udruga,
+                                    lokalnih festivala i inicijativa za dizajn.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://hulu-split.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">HULU Split —
+                                    hulu-split.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Splitska udruga umjetnika. Regionalni i
+                                    dalmatinski natječaji za vizualne komunikacije.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://designed.rs" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇷🇸</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">Designed.rs —
+                                    designed.rs</h3>
+                                <p class="text-sm text-gray-500 mt-1">Regionalni portal za dizajn u Srbiji. Natječaji
+                                    često otvoreni i za HR dizajnere.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://czk.si" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇸🇮</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">Center za
+                                    kreativnost — czk.si</h3>
+                                <p class="text-sm text-gray-500 mt-1">Slovenska platforma s natječajima, grantovima i
+                                    prilikama za dizajnere iz regije.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://dos-design.si" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-blue-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇸🇮</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-blue-600 transition">DOS —
+                                    dos-design.si</h3>
+                                <p class="text-sm text-gray-500 mt-1">Krovna slovenska dizajnerska organizacija.
+                                    Regionalni natječaji slovenskih tvrtki i općina.</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </section>
+
+            <!-- Category 2: Javna nabava -->
+            <section class="mb-10">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">🏢 Javna nabava i poslovni
+                    agregatori</h2>
+                <p class="text-gray-500 text-sm mb-5">Natječaji gradova, općina, turističkih zajednica i javnih tvrtki.
+                    Pretraži: "grafički dizajn", "vizualni identitet", CPV 79822500.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <a href="https://eojn.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🏛️</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">EOJN — eojn.hr
+                                </h3>
+                                <p class="text-sm text-gray-500 mt-1">Glavni državni portal. Svaka općina i ministarstvo
+                                    mora ovdje objaviti natječaj iznad financijskog praga.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://ted.europa.eu" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇪🇺</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">TED —
+                                    ted.europa.eu</h3>
+                                <p class="text-sm text-gray-500 mt-1">Portal za javnu nabavu EU. Svi veliki državni i
+                                    gradski natječaji iz HR i EU.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://briefing.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">📬</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">Briefing.hr —
+                                    briefing.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Prati sve natječaje javne nabave u RH i regiji.
+                                    Mail filteri za dizajn natječaje.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://tenderi.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">📋</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">Tenderi.hr —
+                                    tenderi.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Praćenje javne i jednostavne nabave u Hrvatskoj.
+                                    Odličan za B2B dizajnere.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://ekapija.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🌐</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">eKapija —
+                                    ekapija.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Regionalni poslovni portal (Srbija, BiH, CG).
+                                    Tražilica tendera za rebrending.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://akta.ba" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇧🇦</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">Akta.ba —
+                                    akta.ba</h3>
+                                <p class="text-sm text-gray-500 mt-1">Poslovni portal BiH. TZ i lokalne uprave ovdje
+                                    objavljuju pozive za dizajn.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://javnanabava.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">📄</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">JavnaNabava.hr
+                                    — javnanabava.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Informativni portal o javnoj nabavi. Izdvojeni
+                                    natječaji iz javnog sektora.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://oglasnik-jn.nn.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">📰</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">Narodne novine
+                                    — oglasnik-jn.nn.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Obavijesti o nadmetanjima javnih naručitelja.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.hgk.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🏭</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">HGK — hgk.hr
+                                </h3>
+                                <p class="text-sm text-gray-500 mt-1">Natječaji za dizajn ambalaže, znakove kvalitete i
+                                    vizualne identitete foruma.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.zagreb.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-green-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🏙️</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-green-600 transition">Stranice
+                                    gradova — zagreb.hr, split.hr, rijeka.hr...</h3>
+                                <p class="text-sm text-gray-500 mt-1">Jednostavna nabava (logotipovi, brošure) — sekcija
+                                    "Natječaji i pozivi" gradskih stranica.</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </section>
+
+            <!-- Category 3: Crowdsourcing -->
+            <section class="mb-10">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">🌍 Crowdsourcing platforme
+                </h2>
+                <p class="text-gray-500 text-sm mb-5">Klijenti raspisuju nagradne natječaje za dizajnere. Tko pobijedi,
+                    odnosi nagradu.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <a href="https://99designs.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🏆</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">99designs —
+                                    99designs.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Najpoznatija platforma za dizajnerske natječaje.
+                                    Tisuće natječaja za logotipove, pakiranja i identitete.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.designcrowd.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🎨</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">DesignCrowd —
+                                    designcrowd.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Klijenti postave brief, dizajneri šalju rješenja.
+                                    Klijent bira pobjednika.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.freelancer.com/contest" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">💼</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">Freelancer
+                                    Contests — freelancer.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Ogromna sekcija natječaja za logotipove i
+                                    ilustracije.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.crowdspring.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🌱</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">Crowdspring —
+                                    crowdspring.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Natječaji za naming, brendiranje i logo dizajn od
+                                    agencija i startupova.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.designhill.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">⛰️</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">Designhill —
+                                    designhill.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Natječaji za vizualne identitete novih firmi i
+                                    proizvoda.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://logotournament.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🏅</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">
+                                    LogoTournament — logotournament.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Isključivo natječaji za izradu logotipova.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://talenthouse.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🎭</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">Talenthouse —
+                                    talenthouse.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Globalni natječaji velikih brendova za fan-art,
+                                    plakate i ilustracije.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.jovoto.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">✨</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">Jovoto —
+                                    jovoto.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Ekskluzivni brendovi (Audi, Greenpeace) traže
+                                    kreativna rješenja i dizajn.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://eyeka.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">👁️</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">eYeka —
+                                    eyeka.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">FMCG brendovi traže inovativna rješenja za
+                                    ambalažu, branding i ilustracije.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.hatchwise.com" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-purple-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🐣</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-purple-600 transition">Hatchwise —
+                                    hatchwise.com</h3>
+                                <p class="text-sm text-gray-500 mt-1">Crowdsourced natječaji za dizajn logotipa, slogana
+                                    i web stranica.</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </section>
+
+            <!-- Category 4: Oglasnici -->
+            <section class="mb-10">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-2">💼 Oglasnici poslova i mreže
+                </h2>
+                <p class="text-gray-500 text-sm mb-5">Tvrtke direktno traže suradnike za freelance projekte i dizajn
+                    ugovore.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <a href="https://www.behance.net/joblist" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-orange-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🅱️</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-orange-600 transition">Behance Jobs
+                                    — behance.net/joblist</h3>
+                                <p class="text-sm text-gray-500 mt-1">Najveća mreža portfelja. Freelance ugovori za
+                                    branding i ilustraciju.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://dribbble.com/jobs" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-orange-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🏀</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-orange-600 transition">Dribbble Jobs
+                                    — dribbble.com/jobs</h3>
+                                <p class="text-sm text-gray-500 mt-1">Digitalni dizajn, UI/UX i ilustracija. Projektni
+                                    poslovi.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.moj-posao.net" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-orange-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-orange-600 transition">MojPosao —
+                                    moj-posao.net</h3>
+                                <p class="text-sm text-gray-500 mt-1">Kategorija "Umjetnost i dizajn" — agencije i
+                                    tvrtke traže vanjske suradnike.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="https://www.posao.hr" target="_blank" rel="noopener"
+                        class="card-enter block bg-white border border-gray-200 p-5 rounded-xl shadow-sm hover:shadow-lg hover:border-orange-300 transition group">
+                        <div class="flex items-start gap-3">
+                            <span class="text-2xl">🇭🇷</span>
+                            <div>
+                                <h3 class="font-bold text-gray-900 group-hover:text-orange-600 transition">Posao.hr —
+                                    posao.hr</h3>
+                                <p class="text-sm text-gray-500 mt-1">Projektni natječaji za kratkoročne dizajnerske
+                                    pothvate u Hrvatskoj.</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </section>
+
+            <!-- Tip -->
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 text-center">
+                <p class="text-blue-800 font-medium">💡 <strong>Savjet:</strong> Ako ciljaš na lokalne uprave
+                    (turističke zajednice), napravi tablicu s linkovima njihovih web stranica (sekcija "Javni pozivi") i
+                    provjeravaj ih početkom svake godine kada se formiraju budžeti za nove sezone.</p>
+            </div>
+        </div>
     </div>
 
     <footer class="text-center py-6 text-sm text-gray-400 border-t border-gray-100 mt-8">
@@ -250,7 +722,28 @@
             btn.classList.remove('opacity-50');
         }
 
-        // 5. Pokretanje
+        // 5. View toggle (Natječaji ↔ Resursi)
+        function showView(view) {
+            const natjecajiView = document.getElementById('natjecaji-view');
+            const resursiView = document.getElementById('resursi-view');
+            const btnNatjecaji = document.getElementById('view-natjecaji');
+            const btnResursi = document.getElementById('view-resursi');
+            const active = 'px-6 py-2.5 rounded-lg font-semibold transition shadow-sm bg-gray-900 text-white hover:bg-gray-800 border-2 border-gray-900';
+            const inactive = 'px-6 py-2.5 rounded-lg font-semibold transition shadow-sm bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-300';
+            if (view === 'resursi') {
+                natjecajiView.classList.add('hidden');
+                resursiView.classList.remove('hidden');
+                btnNatjecaji.className = inactive;
+                btnResursi.className = active;
+            } else {
+                resursiView.classList.add('hidden');
+                natjecajiView.classList.remove('hidden');
+                btnNatjecaji.className = active;
+                btnResursi.className = inactive;
+            }
+        }
+
+        // 6. Pokretanje
         window.onload = () => fetchCompetitions();
     </script>
 </body>
