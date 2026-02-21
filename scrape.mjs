@@ -79,7 +79,21 @@ function detectCategory(t) {
 
 function detectStatus(text, deadline) {
     const t = text.toLowerCase();
-    if (/rezultat|odabran|proglašen|završen|winner|result|selected|awarded/i.test(t)) return 'Završeno';
+
+    // ── Classify as "Novosti" (news) — not a real competition/call ──
+    // Exhibitions
+    if (/\bizložba\b|izložbe\b|exhibition|galerij[aie]\s+(karas|kontrast|flora)/i.test(t) && !/natječaj|poziv|prijav|open call/i.test(t)) return 'Novosti';
+    // Job postings (not design competitions)
+    if (/radno mjesto|zapošljavan|asistent|financij|pravno|administrativ|računovod/i.test(t)) return 'Novosti';
+    // News about competition RESULTS (not the competition itself)
+    if (/^odabran[aie]?\s|^rezultati?\s|^proglašen[aie]?\s|objavljeni rezultati/i.test(t)) return 'Novosti';
+    // News about selected books/winners (announcement, not call)
+    if (/najljepše oblikovane knjige|odabrani autori|odabrani pozvani|odabrana tri tima/i.test(t)) return 'Novosti';
+    // Workshop/event announcements (not competitions)
+    if (/\bradionica\b|\bworkshop\b|\bwebinar\b|\bpredavanje\b/i.test(t) && !/natječaj|poziv|prijav/i.test(t)) return 'Novosti';
+
+    // ── Standard competition status ──
+    if (/rezultat|proglašen|završen|winner|result|selected|awarded/i.test(t)) return 'Završeno';
     if (deadline && (new Date() - new Date(deadline)) / 864e5 > 14) return 'Završeno';
     return 'Aktivno';
 }

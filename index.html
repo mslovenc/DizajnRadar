@@ -80,6 +80,9 @@
             <button onclick="filterCompetitions('Završeno')"
                 class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
                 id="btn-Završeno">Završeni</button>
+            <button onclick="filterCompetitions('Novosti')"
+                class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                id="btn-Novosti">📰 Novosti</button>
         </nav>
 
         <div class="flex justify-center mb-10">
@@ -164,7 +167,10 @@
             const container = document.getElementById('competitions-container');
             container.innerHTML = '';
 
-            const filteredData = competitionsData.filter(comp => filterStr === 'Sve' || comp.status === filterStr);
+            const filteredData = competitionsData.filter(comp => {
+                if (filterStr === 'Sve') return comp.status !== 'Novosti';
+                return comp.status === filterStr;
+            });
 
             if (filteredData.length === 0) {
                 container.innerHTML = `
@@ -177,7 +183,8 @@
 
             filteredData.forEach((comp, i) => {
                 const isAktivno = comp.status === 'Aktivno';
-                const statusClass = isAktivno ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600';
+                const isNovosti = comp.status === 'Novosti';
+                const statusClass = isAktivno ? 'bg-green-100 text-green-800' : isNovosti ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600';
 
                 const title = escapeHtml(comp.title || 'Bez naziva');
                 const org = escapeHtml(comp.org || 'Nepoznat organizator');
@@ -219,7 +226,7 @@
 
         // 3. Upravljanje filterima
         function filterCompetitions(status) {
-            ['Sve', 'Aktivno', 'Završeno'].forEach(id => {
+            ['Sve', 'Aktivno', 'Završeno', 'Novosti'].forEach(id => {
                 const btn = document.getElementById('btn-' + id);
                 btn.className = "px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50";
             });
