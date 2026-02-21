@@ -724,7 +724,117 @@ async function scrapeCityPortals() {
 }
 
 // ════════════════════════════════════════════
-// SOURCE 20: Dexigner — Global design competition directory
+// SOURCE 20: CzK — Center za kreativnost (Slovenia)
+// Scrapes /en/opportunities/ page which has explicit deadlines
+// ════════════════════════════════════════════
+async function scrapeCzk() {
+    console.log('📡 [czk.si] Fetching...');
+    const competitions = [];
+
+    // Scrape opportunities page (has explicit deadlines in <h6>)
+    const oppHtml = await safeFetch('https://czk.si/en/opportunities/');
+    if (oppHtml) {
+        // Pattern: <a href="..." title="Permanent Link to TITLE">...<h6>Deadline: <span>DATE</span></h6>
+        const re = /<a[^>]*href="(https?:\/\/czk\.si\/en\/opportunities\/[^"]+)"[^>]*title="Permanent Link to ([^"]+)"/gi;
+        let m; const seen = new Set();
+        while ((m = re.exec(oppHtml)) !== null) {
+            const link = m[1]; const title = decode(m[2].trim());
+            if (seen.has(link)) continue;
+            seen.add(link);
+
+            // Extract deadline from <h6>Deadline: <span>DATE</span></h6> nearby
+            const nearEnd = Math.min(m.index + 800, oppHtml.length);
+            const nearby = oppHtml.substring(m.index, nearEnd);
+            const dlMatch = nearby.match(/<h6[^>]*>\s*Deadline:\s*<span>([^<]+)<\/span>/i);
+            let deadline = dlMatch ? findDate(dlMatch[1]) : findDate(strip(nearby));
+
+            if (isStale(deadline)) continue;
+            if (isOldByTitle(title)) continue;
+
+            competitions.push({
+                title, link, org: 'Center za kreativnost / MAO',
+                category: detectCategory(title),
+                status: detectStatus(title + ' ' + strip(nearby), deadline),
+                deadline, prize: 'Vidi detalje',
+            });
+            if (competitions.length >= 4) break;
+        }
+    }
+
+    // Also scrape news page for open calls
+    const newsHtml = await safeFetch('https://czk.si/en/news/');
+    if (newsHtml) {
+        const re = /<a[^>]*href="(https?:\/\/czk\.si\/en\/news\/[^"]+)"[^>]*title="Permanent Link to ([^"]+)"/gi;
+        let m; const seen = new Set(competitions.map(c => c.link));
+        while ((m = re.exec(newsHtml)) !== null) {
+            const link = m[1]; const title = decode(m[2].trim());
+            if (seen.has(link)) continue;
+            if (!/open call|call for|biennial|bio \d|award|competition|selection|mark of excellence/i.test(title)) continue;
+            seen.add(link);
+
+            const nearEnd = Math.min(m.index + 800, newsHtml.length);
+            const nearby = newsHtml.substring(m.index, nearEnd);
+            const nearText = strip(nearby);
+            let deadline = findDate(nearText);
+
+            if (isStale(deadline)) continue;
+            if (isOldByTitle(title)) continue;
+
+            competitions.push({
+                title, link, org: 'Center za kreativnost / MAO',
+                category: detectCategory(title),
+                status: detectStatus(title + ' ' + nearText, deadline),
+                deadline, prize: 'Vidi detalje',
+            });
+            if (competitions.length >= 6) break;
+        }
+    }
+
+    console.log(`  ✅ [czk.si] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 21: HULU Split — Croatian Association of Visual Artists
+// ════════════════════════════════════════════
+async function scrapeHuluSplit() {
+    console.log('📡 [hulu-split.hr] Fetching...');
+    const html = await safeFetch('https://hulu-split.hr');
+    if (!html) return [];
+
+    // Use the title attribute pattern (WordPress uses title= on links)
+    const re = /<a[^>]*href="(https?:\/\/hulu-split\.hr\/[^"]+)"[^>]*>([^<]{10,120})<\/a>/gi;
+    let m; const seen = new Set(); const competitions = [];
+    while ((m = re.exec(html)) !== null) {
+        const link = m[1]; const title = decode(m[2].trim());
+        if (seen.has(link) || /kontakt|o-nama|about|english|izlozbe\/?$/i.test(link)) continue;
+        // Strict filter: only real competition/call keywords, exclude exhibition invitations
+        if (/pozivnica/i.test(title)) continue;
+        if (!/natječaj|javni poziv|open call|prijav[ae]|konkurs|rezidencij/i.test(title)) continue;
+        seen.add(link);
+
+        // Extract date from nearby HTML
+        const nearby = html.substring(Math.max(0, m.index - 200), m.index + 500);
+        const nearText = strip(nearby);
+        let deadline = findDate(nearText);
+
+        if (isStale(deadline)) continue;
+        if (isOldByTitle(title)) continue;
+
+        competitions.push({
+            title, link, org: 'HULU Split',
+            category: detectCategory(title),
+            status: detectStatus(title, deadline),
+            deadline, prize: 'Vidi detalje',
+        });
+        if (competitions.length >= 5) break;
+    }
+    console.log(`  ✅ [hulu-split.hr] ${competitions.length} competitions`);
+    return competitions;
+}
+
+// ════════════════════════════════════════════
+// SOURCE 22: Dexigner — Global design competition directory
 // ════════════════════════════════════════════
 async function scrapeDexigner() {
     console.log('📡 [dexigner.com] Fetching...');
@@ -802,11 +912,11 @@ async function upsertToSupabase(competitions) {
 }
 
 // ════════════════════════════════════════════
-// Main — 20 sources
+// Main — 22 sources
 // ════════════════════════════════════════════
 async function main() {
     try {
-        console.log('🎯 DizajnRadar Scraper v5 — 20 sources, deep scrape\n');
+        console.log('🎯 DizajnRadar Scraper v6 — 22 sources, deep scrape\n');
         const results = await Promise.allSettled([
             // 🇭🇷 Croatia — Design associations
             scrapeDizajnHr(),         // 1. HDD
@@ -834,8 +944,12 @@ async function main() {
             scrapeDexigner(),         // 18. Dexigner
             // 🌍 International — Crowdsourcing
             scrapeCrowdsourcing(),    // 19. 99designs + DesignCrowd
+            // 🇸🇮 Slovenia — Additional
+            scrapeCzk(),              // 20. Center za kreativnost
+            // 🇭🇷 Croatia — Additional
+            scrapeHuluSplit(),        // 21. HULU Split
             // 🌐 Regional — Forums
-            scrapeDizajnZona(),       // 20. Dizajn Zona
+            scrapeDizajnZona(),       // 22. Dizajn Zona
         ]);
         const all = [];
         for (const r of results) {
