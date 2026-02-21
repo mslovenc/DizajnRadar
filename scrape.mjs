@@ -58,7 +58,19 @@ function fromRemaining(str) {
 
 function isStale(deadline) {
     if (!deadline) return false;
-    return (new Date() - new Date(deadline)) / 864e5 > 180;
+    return (new Date() - new Date(deadline)) / 864e5 > 60;
+}
+
+// Detect entries with old years in the title (e.g. "BIG SEE 2018", "Presežki 2019")
+function isOldByTitle(title) {
+    const currentYear = new Date().getFullYear();
+    const yearMatch = title.match(/\b(20\d{2})\b/);
+    if (yearMatch) {
+        const year = parseInt(yearMatch[1]);
+        // Reject if the year in the title is more than 1 year old
+        if (year < currentYear - 1) return true;
+    }
+    return false;
 }
 
 function detectCategory(t) {
@@ -764,9 +776,17 @@ async function upsertToSupabase(competitions) {
     // Clear all and replace
     await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?title=neq.___KEEP___`, { method: 'DELETE', headers });
 
+    // Filter out stale entries (old deadlines + old year references in title)
+    const fresh = competitions.filter(c => {
+        if (isStale(c.deadline)) { console.log(`  🗑️ Stale (old deadline): ${c.title.substring(0, 50)}`); return false; }
+        if (isOldByTitle(c.title)) { console.log(`  🗑️ Stale (old year): ${c.title.substring(0, 50)}`); return false; }
+        return true;
+    });
+    console.log(`  📋 After removing stale: ${fresh.length} (removed ${competitions.length - fresh.length})`);
+
     // Deduplicate by normalized title
     const seen = new Map();
-    for (const c of competitions) {
+    for (const c of fresh) {
         const key = c.title.toLowerCase().replace(/[^a-zčćžšđ0-9]/g, '').substring(0, 40);
         if (!seen.has(key) || (c.deadline && !seen.get(key).deadline)) seen.set(key, c);
     }
