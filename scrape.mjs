@@ -282,7 +282,7 @@ async function scrapeEuropeanDesign() {
     const text = strip(html);
     const deadline = findDate(text);
     return [{
-        title: 'European Design Awards 2026', link: 'https://europeandesign.org/',
+        title: `European Design Awards ${new Date().getFullYear()}`, link: 'https://europeandesign.org/',
         org: 'European Design Awards', category: 'Grafički dizajn',
         status: detectStatus(text, deadline), deadline,
         prize: 'Europska nagrada za dizajn',
@@ -316,29 +316,33 @@ async function scrapeHdlu() {
     if (!html) return [];
 
     const re = /<a[^>]*href="(https?:\/\/www\.hdlu\.hr\/\d{4}\/\d{2}\/[^"]+)"[^>]*>([^<]{10,120})<\/a>/gi;
-    let m; const seen = new Set(); const competitions = [];
+    let m; const seen = new Set(); const entries = [];
     while ((m = re.exec(html)) !== null) {
         const link = m[1]; const title = decode(m[2].trim());
         if (seen.has(link)) continue;
-        // Only include call/competition-related items
         if (!/natječaj|poziv|izložb|salon|online natječaj|open call/i.test(title)) continue;
         seen.add(link);
+        entries.push({ link, title });
+        if (entries.length >= 5) break;
+    }
 
-        // Deep scrape for deadline
-        const page = await safeFetch(link);
+    // Fetch detail pages in parallel
+    const pages = await Promise.allSettled(entries.map(e => safeFetch(e.link)));
+    const competitions = [];
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        const page = pages[i].status === 'fulfilled' ? pages[i].value : null;
         let deadline = null;
         if (page) {
             const og = page.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
             const fullText = (og ? decode(og[1]) : '') + ' ' + strip(page).substring(0, 2000);
             deadline = findDate(fullText);
         }
-
         competitions.push({
-            title, link, org: 'HDLU',
-            category: detectCategory(title), status: detectStatus(title, deadline),
+            title: entry.title, link: entry.link, org: 'HDLU',
+            category: detectCategory(entry.title), status: detectStatus(entry.title, deadline),
             deadline, prize: 'Vidi detalje',
         });
-        if (competitions.length >= 5) break;
     }
     console.log(`  ✅ [hdlu.hr] ${competitions.length} competitions`);
     return competitions;
@@ -418,7 +422,7 @@ async function scrapeDesignEuropa() {
     console.log('📡 [designeuropa] Fetching...');
     const html = await safeFetch('https://www.euipo.europa.eu/en/designeuropa-awards');
     const text = html ? strip(html) : '';
-    const deadline = findDate(text) || '2026-02-20';
+    const deadline = findDate(text);
     return [{
         title: 'DesignEuropa Awards 2026 (Ljubljana)', link: 'https://www.euipo.europa.eu/en/designeuropa-awards',
         org: 'EUIPO / European Commission', category: 'Industrijski dizajn',
@@ -449,13 +453,13 @@ async function scrapeO3one() {
         });
         if (competitions.length >= 3) break;
     }
-    // Also add the known 2026 open call
+    // Fallback: add a generic entry if nothing was scraped
     if (competitions.length === 0) {
         competitions.push({
-            title: 'O3ONE Open Call — Exhibitions 2026/27',
+            title: 'O3ONE Open Call — Exhibitions',
             link: 'https://o3one.rs/', org: 'O3ONE Art Space, Beograd',
             category: 'Grafički dizajn', status: 'Aktivno',
-            deadline: '2026-03-02', prize: 'Izložba u Beogradu',
+            deadline: null, prize: 'Izložba u Beogradu',
         });
     }
     console.log(`  ✅ [o3one.rs] ${competitions.length} competitions`);
@@ -467,11 +471,19 @@ async function scrapeO3one() {
 // ════════════════════════════════════════════
 async function scrapeFluid() {
     console.log('📡 [fluid-design] Fetching...');
+    const year = new Date().getFullYear();
+    const html = await safeFetch(`https://www.contestwatchers.com/fluid-regional-awards-for-young-designers-${year}/`);
+    let deadline = null;
+    if (html) {
+        const text = strip(html);
+        deadline = findDate(text);
+    }
+    if (isStale(deadline)) return [];
     return [{
-        title: 'FLUID — Regional Awards for Young Designers 2026',
-        link: 'https://www.contestwatchers.com/fluid-regional-awards-for-young-designers-2026/',
-        org: 'FLUID', category: 'Grafički dizajn', status: 'Aktivno',
-        deadline: '2026-02-25', prize: 'Besplatna prijava — nagrada za mlade dizajnere',
+        title: `FLUID — Regional Awards for Young Designers ${year}`,
+        link: `https://www.contestwatchers.com/fluid-regional-awards-for-young-designers-${year}/`,
+        org: 'FLUID', category: 'Grafički dizajn', status: deadline ? detectStatus('', deadline) : 'Aktivno',
+        deadline, prize: 'Besplatna prijava — nagrada za mlade dizajnere',
     }];
 }
 
@@ -531,10 +543,6 @@ async function scrapeVizkultura() {
     const html = await safeFetch('https://vizkultura.hr/tag/natjecaj/');
     if (!html) return [];
 
-    const re = /<a[^>]*href="(https:\/\/vizkultura\.hr\/[^"]+)"[^>]*>\s*<\/a>\s*<h3[^>]*>([^<]+)<\/h3>|<h3[^>]*>([^<]+)<\/h3>/gi;
-    // Also try simpler pattern
-    const re2 = /<a[^>]*href="(https:\/\/vizkultura\.hr\/[^"]+\/)"/gi;
-    const titleRe = /<h3[^>]*>([^<]+)<\/h3>/gi;
 
     const seen = new Set(); const competitions = [];
     let m;
@@ -883,9 +891,6 @@ async function upsertToSupabase(competitions) {
     console.log(`💾 Writing ${competitions.length} competitions to Supabase...`);
     const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
 
-    // Clear all and replace
-    await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?title=neq.___KEEP___`, { method: 'DELETE', headers });
-
     // Filter out stale entries (old deadlines + old year references in title)
     const fresh = competitions.filter(c => {
         if (isStale(c.deadline)) { console.log(`  🗑️ Stale (old deadline): ${c.title.substring(0, 50)}`); return false; }
@@ -902,12 +907,36 @@ async function upsertToSupabase(competitions) {
     }
     const unique = [...seen.values()];
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
+    // Insert new data first, then delete old data only on success
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji_new`, {
         method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' },
         body: JSON.stringify(unique),
     });
+    // If the staging table doesn't exist, fall back to delete-then-insert
+    if (res.status === 404) {
+        console.log('  ℹ️  Staging table not found, using direct replace...');
+        await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?title=neq.___KEEP___`, { method: 'DELETE', headers });
+        const directRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
+            method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' },
+            body: JSON.stringify(unique),
+        });
+        if (!directRes.ok) throw new Error(`Insert failed: ${directRes.status} — ${await directRes.text()}`);
+        const inserted = await directRes.json();
+        console.log(`  ✅ Inserted ${inserted.length} unique competitions`);
+        return;
+    }
     if (!res.ok) throw new Error(`Insert failed: ${res.status} — ${await res.text()}`);
-    const inserted = await res.json();
+
+    // Staging insert succeeded — now safe to clear and copy
+    await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?title=neq.___KEEP___`, { method: 'DELETE', headers });
+    const copyRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
+        method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' },
+        body: JSON.stringify(unique),
+    });
+    if (!copyRes.ok) throw new Error(`Copy insert failed: ${copyRes.status} — ${await copyRes.text()}`);
+    // Clean up staging table
+    await fetch(`${SUPABASE_URL}/rest/v1/natjecaji_new?id=gt.0`, { method: 'DELETE', headers });
+    const inserted = await copyRes.json();
     console.log(`  ✅ Inserted ${inserted.length} unique competitions`);
 }
 

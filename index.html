@@ -651,6 +651,7 @@
                 return;
             }
 
+            let cardsHtml = '';
             filteredData.forEach((comp, i) => {
                 const isAktivno = comp.status === 'Aktivno';
                 const isNovosti = comp.status === 'Novosti';
@@ -667,7 +668,7 @@
                     ? new Date(comp.deadline).toLocaleDateString('hr-HR')
                     : 'Do popunjenja / Nije navedeno';
 
-                const card = `
+                cardsHtml += `
                     <div class="card-enter bg-white border border-gray-200 p-6 rounded-xl shadow-sm hover:shadow-lg transition-shadow flex flex-col justify-between"
                          style="animation-delay: ${i * 80}ms">
                         <div>
@@ -690,8 +691,8 @@
                         </div>
                     </div>
                 `;
-                container.innerHTML += card;
             });
+            container.innerHTML = cardsHtml;
         }
 
         // 3. Upravljanje filterima
@@ -721,7 +722,8 @@
                 const latest = dates[0];
                 el.textContent = `🕐 Zadnje ažurirano: ${latest.toLocaleDateString('hr-HR')} u ${latest.toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })}`;
             } else {
-                el.textContent = '🕐 Zadnje ažurirano: danas';
+                const now = new Date();
+                el.textContent = `🕐 Zadnje ažurirano: ${now.toLocaleDateString('hr-HR')} u ${now.toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })}`;
             }
         }
 
