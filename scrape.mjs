@@ -7,6 +7,7 @@
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://erimkexlkybipsdutsfd.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (like Gecko) Chrome/131.0 Safari/537.36';
+const SCRAPED_AT = new Date().toISOString();
 
 // ── Utils ──
 function decode(str) {
@@ -54,6 +55,28 @@ function fromRemaining(str) {
     else if (m[2][0] === 'w') d.setDate(d.getDate() + n * 7);
     else d.setMonth(d.getMonth() + n);
     return d.toISOString().split('T')[0];
+}
+
+// ── Extract publication / posting date from HTML and URL ──
+function findPublishedDate(html, url) {
+    if (!html && !url) return null;
+    // 1. Try URL path: /2026/02/15/ or /2026-02-15/
+    if (url) {
+        const urlM = url.match(/\/(20\d{2})\/(\d{2})\/(\d{2})\/?/);
+        if (urlM) return `${urlM[1]}-${urlM[2]}-${urlM[3]}`;
+    }
+    if (!html) return null;
+    // 2. <meta property="article:published_time" content="2026-02-15T...">
+    const metaM = html.match(/<meta[^>]*property="article:published_time"[^>]*content="([^"]+)"/i)
+        || html.match(/<meta[^>]*content="([^"]+)"[^>]*property="article:published_time"/i);
+    if (metaM) { const d = metaM[1].substring(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d; }
+    // 3. <time datetime="2026-02-15...">
+    const timeM = html.match(/<time[^>]*datetime="([^"]+)"/i);
+    if (timeM) { const d = timeM[1].substring(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d; }
+    // 4. <meta property="og:article:published_time">
+    const ogM = html.match(/<meta[^>]*property="og:article:published_time"[^>]*content="([^"]+)"/i);
+    if (ogM) { const d = ogM[1].substring(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d; }
+    return null;
 }
 
 function isStale(deadline) {
@@ -168,11 +191,13 @@ async function scrapeDizajnHr() {
         const status = detectStatus(entry.title + ' ' + fullText, deadline);
         if (isStale(deadline)) continue;
 
+        const published_date = findPublishedDate(pageHtml, entry.link);
         competitions.push({
             title: entry.title, link: entry.link,
             org: extractOrg(fullText) || 'HDD / dizajn.hr',
             category: detectCategory(entry.title + ' ' + fullText),
             status, deadline, prize: extractPrize(fullText),
+            published_date, scraped_at: SCRAPED_AT,
         });
     }
     console.log(`  ✅ [dizajn.hr] ${competitions.length} competitions`);
@@ -228,12 +253,14 @@ async function scrapeContestWatchers() {
         }
         if (!deadline) deadline = fromRemaining(e.remaining);
 
+        const published_date = findPublishedDate(pageHtml, e.link);
         competitions.push({
             title: e.title, link: externalLink,
             org: e.title.replace(/\s*\d{4}.*$/, '').replace(/\s*[-–:].*$/, '').substring(0, 50) || 'Međunarodni natječaj',
             category: detectCategory(e.title),
             status: 'Aktivno', deadline,
             prize: e.free ? 'Besplatna prijava' : 'Vidi detalje',
+            published_date, scraped_at: SCRAPED_AT,
         });
     }
     console.log(`  ✅ [contestwatchers.com] ${competitions.length} competitions`);
@@ -262,10 +289,12 @@ async function scrapeBigSee() {
         const title = titleM ? decode(titleM[1].trim().replace(/\s*[-–|].*$/, '')) : 'BIG SEE Award';
         const text = strip(html.substring(0, 5000));
         const deadline = findDate(text);
+        const published_date = findPublishedDate(html, urls[i].url);
         competitions.push({
             title, link: urls[i].url, org: 'BIG SEE / Zavod Big',
             category: urls[i].cat, status: detectStatus(text, deadline),
             deadline, prize: 'Međunarodna nagrada',
+            published_date, scraped_at: SCRAPED_AT,
         });
     }
     console.log(`  ✅ [bigsee.eu] ${competitions.length} competitions`);
@@ -281,11 +310,13 @@ async function scrapeEuropeanDesign() {
     if (!html) return [];
     const text = strip(html);
     const deadline = findDate(text);
+    const published_date = findPublishedDate(html, 'https://europeandesign.org/');
     return [{
         title: `European Design Awards ${new Date().getFullYear()}`, link: 'https://europeandesign.org/',
         org: 'European Design Awards', category: 'Grafički dizajn',
         status: detectStatus(text, deadline), deadline,
         prize: 'Europska nagrada za dizajn',
+        published_date, scraped_at: SCRAPED_AT,
     }];
 }
 
@@ -299,11 +330,13 @@ async function scrapeADesign() {
     if (!html) return [];
     const text = strip(html);
     const deadline = findDate(text);
+    const published_date = findPublishedDate(html, 'https://competition.adesignaward.com/registration.html');
     return [{
         title: "A' Design Award & Competition 2026", link: 'https://competition.adesignaward.com/registration.html',
         org: "A' Design Award", category: 'Grafički dizajn',
         status: 'Aktivno', deadline,
         prize: 'Međunarodna nagrada + promocija',
+        published_date, scraped_at: SCRAPED_AT,
     }];
 }
 
@@ -338,10 +371,12 @@ async function scrapeHdlu() {
             const fullText = (og ? decode(og[1]) : '') + ' ' + strip(page).substring(0, 2000);
             deadline = findDate(fullText);
         }
+        const published_date = findPublishedDate(page, entry.link);
         competitions.push({
             title: entry.title, link: entry.link, org: 'HDLU',
             category: detectCategory(entry.title), status: detectStatus(entry.title, deadline),
             deadline, prize: 'Vidi detalje',
+            published_date, scraped_at: SCRAPED_AT,
         });
     }
     console.log(`  ✅ [hdlu.hr] ${competitions.length} competitions`);
@@ -367,10 +402,12 @@ async function scrapePogon() {
         const near = html.substring(Math.max(0, m.index - 200), m.index + 500);
         const deadline = findDate(strip(near));
 
+        // Pogon doesn't have explicit published dates on listing, use null
         competitions.push({
             title, link, org: 'POGON Zagreb',
             category: detectCategory(title), status: 'Aktivno',
             deadline, prize: 'Vidi detalje',
+            published_date: null, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 5) break;
     }
@@ -390,11 +427,13 @@ async function scrapeBrumen() {
     if (brumenHtml) {
         const text = strip(brumenHtml);
         const deadline = findDate(text);
+        const brumenPub = findPublishedDate(brumenHtml, 'https://brumen.org/');
         competitions.push({
             title: 'Brumen Biennial — Slovenian Design Awards', link: 'https://brumen.org/',
             org: 'Brumen Foundation', category: 'Grafički dizajn',
             status: detectStatus(text, deadline), deadline,
             prize: 'Nacionalna nagrada za dizajn (Slovenija)',
+            published_date: brumenPub, scraped_at: SCRAPED_AT,
         });
     }
 
@@ -403,11 +442,13 @@ async function scrapeBrumen() {
     if (tamHtml) {
         const text = strip(tamHtml);
         const deadline = findDate(text);
+        const tamPub = findPublishedDate(tamHtml, 'https://tam-tam.si/plaktivat/');
         competitions.push({
             title: 'Plaktivat — International Poster Design Competition', link: 'https://tam-tam.si/plaktivat/',
             org: 'TAM-TAM Institute', category: 'Grafički dizajn',
             status: detectStatus(text, deadline), deadline,
             prize: 'Izložba na javnim površinama u Sloveniji',
+            published_date: tamPub, scraped_at: SCRAPED_AT,
         });
     }
 
@@ -423,11 +464,13 @@ async function scrapeDesignEuropa() {
     const html = await safeFetch('https://www.euipo.europa.eu/en/designeuropa-awards');
     const text = html ? strip(html) : '';
     const deadline = findDate(text);
+    const published_date = findPublishedDate(html, 'https://www.euipo.europa.eu/en/designeuropa-awards');
     return [{
         title: 'DesignEuropa Awards 2026 (Ljubljana)', link: 'https://www.euipo.europa.eu/en/designeuropa-awards',
         org: 'EUIPO / European Commission', category: 'Industrijski dizajn',
         status: detectStatus(text, deadline), deadline,
         prize: 'Europska nagrada za dizajn',
+        published_date, scraped_at: SCRAPED_AT,
     }];
 }
 
@@ -450,6 +493,7 @@ async function scrapeO3one() {
             title, link, org: 'O3ONE Art Space, Beograd',
             category: detectCategory(title), status: 'Aktivno',
             deadline: null, prize: 'Izložba u Beogradu',
+            published_date: null, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 3) break;
     }
@@ -460,6 +504,7 @@ async function scrapeO3one() {
             link: 'https://o3one.rs/', org: 'O3ONE Art Space, Beograd',
             category: 'Grafički dizajn', status: 'Aktivno',
             deadline: null, prize: 'Izložba u Beogradu',
+            published_date: null, scraped_at: SCRAPED_AT,
         });
     }
     console.log(`  ✅ [o3one.rs] ${competitions.length} competitions`);
@@ -479,11 +524,13 @@ async function scrapeFluid() {
         deadline = findDate(text);
     }
     if (isStale(deadline)) return [];
+    const published_date = findPublishedDate(html, `https://www.contestwatchers.com/fluid-regional-awards-for-young-designers-${year}/`);
     return [{
         title: `FLUID — Regional Awards for Young Designers ${year}`,
         link: `https://www.contestwatchers.com/fluid-regional-awards-for-young-designers-${year}/`,
         org: 'FLUID', category: 'Grafički dizajn', status: deadline ? detectStatus('', deadline) : 'Aktivno',
         deadline, prize: 'Besplatna prijava — nagrada za mlade dizajnere',
+        published_date, scraped_at: SCRAPED_AT,
     }];
 }
 
@@ -505,6 +552,7 @@ async function scrapeGraphicCompetitions() {
             title, link, org: title.replace(/\s*\d{4}.*$/, '').substring(0, 50),
             category: detectCategory(title), status: 'Aktivno',
             deadline: null, prize: 'Vidi detalje',
+            published_date: null, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 8) break;
     }
@@ -525,9 +573,11 @@ async function scrapeDezeen() {
         const link = m[1]; const title = decode(m[2].trim());
         if (seen.has(link)) continue;
         seen.add(link);
+        const published_date = findPublishedDate(null, link); // Pass null for html as we don't fetch detail page
         competitions.push({
             title, link, org: 'Dezeen', category: detectCategory(title),
             status: 'Aktivno', deadline: null, prize: 'Vidi detalje',
+            published_date, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 8) break;
     }
@@ -567,10 +617,13 @@ async function scrapeVizkultura() {
         const dateMatch = nearbyHtml.match(/(\d{2})-(\d{2})-(\d{4})/);
         const deadline = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : null;
 
+        // vizkultura uses DD-MM-YYYY as article date, use it as published_date
+        const published_date = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : null;
         competitions.push({
             title, link, org: 'Vizkultura',
             category: detectCategory(title), status: detectStatus(title, deadline),
             deadline, prize: 'Vidi detalje',
+            published_date, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 8) break;
     }
@@ -613,6 +666,7 @@ async function scrapeHura() {
                 title: entry.title, link: fullLink, org: entry.org,
                 category: 'Komunikacijski dizajn', status: 'Aktivno',
                 deadline, prize: 'Nagrada za kreativnost',
+                published_date: null, scraped_at: SCRAPED_AT,
             });
         }
     }
@@ -644,6 +698,7 @@ async function scrapeDos() {
             title, link, org: 'DOS — Društvo oblikovalcev Slovenije',
             category: detectCategory(title), status: detectStatus(title, deadline),
             deadline, prize: 'Vidi detalje',
+            published_date: null, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 5) break;
     }
@@ -670,6 +725,7 @@ async function scrapeDizajnZona() {
             title, link, org: 'Dizajn Zona forum',
             category: detectCategory(title), status: 'Aktivno',
             deadline: null, prize: 'Projektni posao',
+            published_date: null, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 5) break;
     }
@@ -688,12 +744,14 @@ async function scrapeCrowdsourcing() {
             link: 'https://99designs.com/contests', org: '99designs / Vista',
             category: 'Vizualni identitet', status: 'Aktivno',
             deadline: null, prize: 'Novčana nagrada po natječaju',
+            published_date: null, scraped_at: SCRAPED_AT,
         },
         {
             title: 'DesignCrowd — Logo & Identity Contests',
             link: 'https://www.designcrowd.com/design-contests', org: 'DesignCrowd',
             category: 'Vizualni identitet', status: 'Aktivno',
             deadline: null, prize: 'Novčana nagrada po natječaju',
+            published_date: null, scraped_at: SCRAPED_AT,
         },
     ];
 }
@@ -723,6 +781,7 @@ async function scrapeCityPortals() {
                 title, link, org: city.name,
                 category: detectCategory(title), status: 'Aktivno',
                 deadline: findDate(title), prize: 'Javni natječaj',
+                published_date: null, scraped_at: SCRAPED_AT,
             });
             if (competitions.length >= 3) break;
         }
@@ -764,6 +823,7 @@ async function scrapeCzk() {
                 category: detectCategory(title),
                 status: detectStatus(title + ' ' + strip(nearby), deadline),
                 deadline, prize: 'Vidi detalje',
+                published_date: null, scraped_at: SCRAPED_AT,
             });
             if (competitions.length >= 4) break;
         }
@@ -793,6 +853,7 @@ async function scrapeCzk() {
                 category: detectCategory(title),
                 status: detectStatus(title + ' ' + nearText, deadline),
                 deadline, prize: 'Vidi detalje',
+                published_date: null, scraped_at: SCRAPED_AT,
             });
             if (competitions.length >= 6) break;
         }
@@ -834,6 +895,7 @@ async function scrapeHuluSplit() {
             category: detectCategory(title),
             status: detectStatus(title, deadline),
             deadline, prize: 'Vidi detalje',
+            published_date: null, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 5) break;
     }
@@ -868,6 +930,7 @@ function parseDexigner(html) {
             title, link, org: 'Dexigner',
             category: detectCategory(title), status: 'Aktivno',
             deadline: null, prize: 'Vidi detalje',
+            published_date: null, scraped_at: SCRAPED_AT,
         });
         if (competitions.length >= 6) break;
     }

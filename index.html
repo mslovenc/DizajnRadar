@@ -680,6 +680,7 @@
                                 <p class="text-sm text-gray-700 flex items-center gap-2">🏢 <span class="font-semibold w-24">Organizator:</span> ${org}</p>
                                 <p class="text-sm text-gray-700 flex items-center gap-2">🎨 <span class="font-semibold w-24">Kategorija:</span> ${category}</p>
                                 <p class="text-sm text-gray-700 flex items-center gap-2">💰 <span class="font-semibold w-24">Nagrada:</span> ${prize}</p>
+                                <p class="text-sm text-gray-700 flex items-center gap-2">📅 <span class="font-semibold w-24">Objavljeno:</span> ${comp.published_date ? new Date(comp.published_date).toLocaleDateString('hr-HR') : 'Nepoznat datum'}</p>
                             </div>
                         </div>
                         <div class="flex justify-between items-center pt-4 border-t border-gray-100 mt-auto">
@@ -712,9 +713,9 @@
         function showLastUpdated() {
             const el = document.getElementById('last-updated');
             if (!competitionsData.length) { el.textContent = ''; return; }
-            // Find the most recent updated_at or created_at
+            // Find the most recent scraped_at timestamp (set by the scraper)
             const dates = competitionsData
-                .map(c => c.updated_at || c.created_at)
+                .map(c => c.scraped_at)
                 .filter(Boolean)
                 .map(d => new Date(d))
                 .sort((a, b) => b - a);
@@ -722,8 +723,7 @@
                 const latest = dates[0];
                 el.textContent = `🕐 Zadnje ažurirano: ${latest.toLocaleDateString('hr-HR')} u ${latest.toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })}`;
             } else {
-                const now = new Date();
-                el.textContent = `🕐 Zadnje ažurirano: ${now.toLocaleDateString('hr-HR')} u ${now.toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })}`;
+                el.textContent = '🕐 Zadnje ažurirano: nepoznato';
             }
         }
 
