@@ -58,6 +58,51 @@
                 transform: translateY(0);
             }
         }
+
+        .card-new {
+            border: 2px solid #10b981;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.25), 0 0 4px rgba(16, 185, 129, 0.15);
+            position: relative;
+        }
+
+        .card-new::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 14px;
+            border: 2px solid transparent;
+            background: linear-gradient(135deg, #10b981, #06b6d4) border-box;
+            -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            animation: glowPulse 2s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        @keyframes glowPulse {
+
+            0%,
+            100% {
+                opacity: 0.6;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .badge-novo {
+            background: linear-gradient(135deg, #10b981, #06b6d4);
+            color: white;
+            font-size: 0.65rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            animation: glowPulse 2s ease-in-out infinite;
+        }
     </style>
 </head>
 
@@ -96,6 +141,17 @@
                     class="px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
                     id="btn-Novosti">📰 Novosti</button>
             </nav>
+
+            <div class="flex justify-center mb-6">
+                <div class="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
+                    <span class="text-sm font-medium text-gray-500">↕ Sortiranje:</span>
+                    <select id="sort-select" onchange="applySorting()"
+                        class="text-sm font-semibold text-gray-700 bg-transparent border-none focus:ring-0 cursor-pointer outline-none">
+                        <option value="newest">Najnovije dodano</option>
+                        <option value="deadline">Završava uskoro (Rok prijava)</option>
+                    </select>
+                </div>
+            </div>
 
             <div class="flex justify-center mb-10">
                 <span id="last-updated" class="text-sm text-gray-400 italic"></span>
@@ -581,6 +637,7 @@
         const SUPABASE_ANON_KEY = 'sb_publishable_9xXcqLj7EtBU1iYLDfMheA_AD54-yML';
 
         let competitionsData = [];
+        let currentFilter = 'Sve';
 
         // ── Pomoćna funkcija: sprečava XSS ubacivanje ──
         function escapeHtml(str) {
@@ -595,6 +652,52 @@
             const trimmed = url.trim();
             if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
             return '#';
+        }
+        // ── localStorage-based "new listing" tracking ──
+        const SEEN_STORAGE_KEY = 'dizajnradar_seen_listings';
+        const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+
+        function getSeenListings() {
+            try {
+                return JSON.parse(localStorage.getItem(SEEN_STORAGE_KEY)) || {};
+            } catch { return {}; }
+        }
+
+        function saveSeenListings(seen) {
+            try { localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(seen)); } catch { }
+        }
+
+        // Compare fetched listings against stored seen list.
+        // New listings get _isNew = true (shown for 7 days).
+        // On very first visit (empty storage), nothing is marked new.
+        function markNewListings(data) {
+            const now = Date.now();
+            const seen = getSeenListings();
+            const isFirstVisit = Object.keys(seen).length === 0;
+
+            // Purge entries older than 30 days to keep storage clean
+            for (const key of Object.keys(seen)) {
+                if (now - seen[key] > 30 * 24 * 60 * 60 * 1000) delete seen[key];
+            }
+
+            for (const comp of data) {
+                const id = comp.link || comp.title;
+                if (!id) continue;
+                if (seen[id]) {
+                    // Already seen — mark new only if first seen within 7 days
+                    comp._isNew = (now - seen[id]) < SEVEN_DAYS;
+                } else {
+                    // Never seen before
+                    if (isFirstVisit) {
+                        // First time the user opens the app — don't mark anything as new
+                        comp._isNew = false;
+                    } else {
+                        comp._isNew = true;
+                    }
+                    seen[id] = now;
+                }
+            }
+            saveSeenListings(seen);
         }
 
         // 1. Dohvaćanje podataka iz baze
@@ -617,6 +720,9 @@
                 }
 
                 competitionsData = await response.json();
+
+                // Track which listings are new (not seen before)
+                markNewListings(competitionsData);
                 showLastUpdated();
                 filterCompetitions('Sve');
 
@@ -651,6 +757,7 @@
                 return;
             }
 
+
             let cardsHtml = '';
             filteredData.forEach((comp, i) => {
                 const isAktivno = comp.status === 'Aktivno';
@@ -668,12 +775,20 @@
                     ? new Date(comp.deadline).toLocaleDateString('hr-HR')
                     : 'Do popunjenja / Nije navedeno';
 
+                // Check if this listing is new (not seen before by the user)
+                const isNew = comp._isNew;
+                const newCardClass = isNew ? 'card-new' : 'border border-gray-200';
+                const novoBadge = isNew ? '<span class="badge-novo">NOVO</span>' : '';
+
                 cardsHtml += `
-                    <div class="card-enter bg-white border border-gray-200 p-6 rounded-xl shadow-sm hover:shadow-lg transition-shadow flex flex-col justify-between"
+                    <div class="card-enter bg-white ${newCardClass} p-6 rounded-xl shadow-sm hover:shadow-lg transition-shadow flex flex-col justify-between"
                          style="animation-delay: ${i * 80}ms">
                         <div>
                             <div class="flex justify-between items-start mb-4 gap-4">
-                                <h2 class="text-xl font-bold text-gray-900 leading-tight">${title}</h2>
+                                <div class="flex items-center gap-2">
+                                    <h2 class="text-xl font-bold text-gray-900 leading-tight">${title}</h2>
+                                    ${novoBadge}
+                                </div>
                                 <span class="px-3 py-1 text-xs font-bold rounded-full whitespace-nowrap ${statusClass}">${status}</span>
                             </div>
                             <div class="space-y-2 mb-6 bg-gray-50 p-4 rounded-lg">
@@ -698,15 +813,39 @@
 
         // 3. Upravljanje filterima
         function filterCompetitions(status) {
+            currentFilter = status;
             ['Sve', 'Aktivno', 'Završeno', 'Novosti'].forEach(id => {
                 const btn = document.getElementById('btn-' + id);
-                btn.className = "px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50";
+                if (btn) btn.className = "px-5 py-2 rounded-md font-medium transition shadow-sm bg-white border border-gray-300 text-gray-700 hover:bg-gray-50";
             });
 
             const activeBtn = document.getElementById('btn-' + status);
-            activeBtn.className = "px-5 py-2 rounded-md font-medium transition shadow-sm bg-blue-600 text-white hover:bg-blue-700 border border-blue-600";
+            if (activeBtn) activeBtn.className = "px-5 py-2 rounded-md font-medium transition shadow-sm bg-blue-600 text-white hover:bg-blue-700 border border-blue-600";
 
-            renderCompetitions(status);
+            applySorting();
+        }
+
+        // 3.5 Primjena sortiranja
+        function applySorting() {
+            const sortVal = document.getElementById('sort-select') ? document.getElementById('sort-select').value : 'newest';
+
+            competitionsData.sort((a, b) => {
+                if (sortVal === 'newest') {
+                    const dateA = a.scraped_at ? new Date(a.scraped_at).getTime() : 0;
+                    const dateB = b.scraped_at ? new Date(b.scraped_at).getTime() : 0;
+                    return dateB - dateA;
+                } else if (sortVal === 'deadline') {
+                    const tA = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+                    const tB = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+                    if (tA === tB) {
+                        return (b.scraped_at ? new Date(b.scraped_at).getTime() : 0) - (a.scraped_at ? new Date(a.scraped_at).getTime() : 0);
+                    }
+                    return tA - tB;
+                }
+                return 0;
+            });
+
+            renderCompetitions(currentFilter);
         }
 
         // 4. Show last updated timestamp

@@ -16,11 +16,16 @@ function decode(str) {
 }
 function strip(html) { return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); }
 
-async function safeFetch(url) {
-    try {
-        const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
-        return r.ok ? await r.text() : null;
-    } catch { return null; }
+async function safeFetch(url, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
+            return r.ok ? await r.text() : null;
+        } catch (e) {
+            if (i === retries - 1) return null;
+            await new Promise(res => setTimeout(res, 2000));
+        }
+    }
 }
 
 // ── Date extraction (Croatian + English) ──
@@ -356,7 +361,7 @@ async function scrapeHdlu() {
         if (!/natječaj|poziv|izložb|salon|online natječaj|open call/i.test(title)) continue;
         seen.add(link);
         entries.push({ link, title });
-        if (entries.length >= 5) break;
+        /* removed limit */
     }
 
     // Fetch detail pages in parallel
@@ -409,7 +414,7 @@ async function scrapePogon() {
             deadline, prize: 'Vidi detalje',
             published_date: null, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 5) break;
+        /* removed limit */
     }
     console.log(`  ✅ [pogon.hr] ${competitions.length} competitions`);
     return competitions;
@@ -495,7 +500,7 @@ async function scrapeO3one() {
             deadline: null, prize: 'Izložba u Beogradu',
             published_date: null, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 3) break;
+        /* removed limit */
     }
     // Fallback: add a generic entry if nothing was scraped
     if (competitions.length === 0) {
@@ -554,7 +559,7 @@ async function scrapeGraphicCompetitions() {
             deadline: null, prize: 'Vidi detalje',
             published_date: null, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 8) break;
+        /* removed limit */
     }
     console.log(`  ✅ [graphiccompetitions.com] ${competitions.length} competitions`);
     return competitions;
@@ -579,7 +584,7 @@ async function scrapeDezeen() {
             status: 'Aktivno', deadline: null, prize: 'Vidi detalje',
             published_date, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 8) break;
+        /* removed limit */
     }
     console.log(`  ✅ [dezeen.com] ${competitions.length} competitions`);
     return competitions;
@@ -625,7 +630,7 @@ async function scrapeVizkultura() {
             deadline, prize: 'Vidi detalje',
             published_date, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 8) break;
+        /* removed limit */
     }
     console.log(`  ✅ [vizkultura.hr] ${competitions.length} competitions`);
     return competitions;
@@ -700,7 +705,7 @@ async function scrapeDos() {
             deadline, prize: 'Vidi detalje',
             published_date: null, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 5) break;
+        /* removed limit */
     }
     console.log(`  ✅ [dos-design.si] ${competitions.length} competitions`);
     return competitions;
@@ -727,7 +732,7 @@ async function scrapeDizajnZona() {
             deadline: null, prize: 'Projektni posao',
             published_date: null, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 5) break;
+        /* removed limit */
     }
     console.log(`  ✅ [dizajnzona.com] ${competitions.length} competitions`);
     return competitions;
@@ -783,7 +788,7 @@ async function scrapeCityPortals() {
                 deadline: findDate(title), prize: 'Javni natječaj',
                 published_date: null, scraped_at: SCRAPED_AT,
             });
-            if (competitions.length >= 3) break;
+            /* removed limit */
         }
     }
     console.log(`  ✅ [city portals] ${competitions.length} competitions`);
@@ -825,7 +830,7 @@ async function scrapeCzk() {
                 deadline, prize: 'Vidi detalje',
                 published_date: null, scraped_at: SCRAPED_AT,
             });
-            if (competitions.length >= 4) break;
+            /* removed limit */
         }
     }
 
@@ -855,7 +860,7 @@ async function scrapeCzk() {
                 deadline, prize: 'Vidi detalje',
                 published_date: null, scraped_at: SCRAPED_AT,
             });
-            if (competitions.length >= 6) break;
+            /* removed limit */
         }
     }
 
@@ -897,7 +902,7 @@ async function scrapeHuluSplit() {
             deadline, prize: 'Vidi detalje',
             published_date: null, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 5) break;
+        /* removed limit */
     }
     console.log(`  ✅ [hulu-split.hr] ${competitions.length} competitions`);
     return competitions;
@@ -932,7 +937,7 @@ function parseDexigner(html) {
             deadline: null, prize: 'Vidi detalje',
             published_date: null, scraped_at: SCRAPED_AT,
         });
-        if (competitions.length >= 6) break;
+        /* removed limit */
     }
     console.log(`  ✅ [dexigner.com] ${competitions.length} competitions`);
     return competitions;
@@ -954,6 +959,22 @@ async function upsertToSupabase(competitions) {
     console.log(`💾 Writing ${competitions.length} competitions to Supabase...`);
     const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
 
+    // Fetch existing entries to preserve original scraped_at
+    let existingMap = new Map();
+    try {
+        const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?select=title,scraped_at`, { headers });
+        if (existingRes.ok) {
+            const existingData = await existingRes.json();
+            for (const item of existingData) {
+                if (!item.title) continue;
+                const key = item.title.toLowerCase().replace(/[^a-zčćžšđ0-9]/g, '').substring(0, 40);
+                existingMap.set(key, item.scraped_at);
+            }
+        }
+    } catch (e) {
+        console.error('  ⚠️  Could not fetch existing data to preserve scraped_at:', e);
+    }
+
     // Filter out stale entries (old deadlines + old year references in title)
     const fresh = competitions.filter(c => {
         if (isStale(c.deadline)) { console.log(`  🗑️ Stale (old deadline): ${c.title.substring(0, 50)}`); return false; }
@@ -966,6 +987,9 @@ async function upsertToSupabase(competitions) {
     const seen = new Map();
     for (const c of fresh) {
         const key = c.title.toLowerCase().replace(/[^a-zčćžšđ0-9]/g, '').substring(0, 40);
+        if (existingMap.has(key)) {
+            c.scraped_at = existingMap.get(key) || c.scraped_at;
+        }
         if (!seen.has(key) || (c.deadline && !seen.get(key).deadline)) seen.set(key, c);
     }
     const unique = [...seen.values()];
