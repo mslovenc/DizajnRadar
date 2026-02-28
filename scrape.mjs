@@ -157,50 +157,48 @@ function extractOrg(text) {
 }
 
 // ════════════════════════════════════════════
-// SOURCE 1: dizajn.hr — with deep page scraping for deadlines
+// SOURCE 1: dizajn.hr — RSS Feed parsing
 // ════════════════════════════════════════════
 async function scrapeDizajnHr() {
-    console.log('📡 [dizajn.hr] Fetching listing...');
-    const html = await safeFetch('https://dizajn.hr/natjecaji/');
-    if (!html) return [];
+    console.log('📡 [dizajn.hr] Fetching RSS feed...');
+    const xml = await safeFetch('https://dizajn.hr/feed/');
+    if (!xml) return [];
 
-    const h2Re = /<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>\s*<\/h2>/gi;
-    let m; const entries = [];
-    while ((m = h2Re.exec(html)) !== null) entries.push({ link: m[1], title: decode(m[2].trim()), idx: m.index });
+    const itemRe = /<item>([\s\S]*?)<\/item>/gi;
+    let m; const competitions = [];
 
-    const competitions = [];
-    // Follow each blog page (up to 15) to get OG description which contains deadlines
-    const toFetch = entries.slice(0, 15);
-    console.log(`  📄 Fetching ${toFetch.length} detail pages for deadlines...`);
+    while ((m = itemRe.exec(xml)) !== null) {
+        const itemXml = m[1];
 
-    const pages = await Promise.allSettled(toFetch.map(e => safeFetch(e.link)));
+        const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/i) || itemXml.match(/<title>(.*?)<\/title>/i);
+        const linkMatch = itemXml.match(/<link>(.*?)<\/link>/i);
+        const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/i);
+        const contentMatch = itemXml.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i) || itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
+        const cats = [...itemXml.matchAll(/<category><!\[CDATA\[(.*?)\]\]><\/category>/gi)].map(c => c[1].toLowerCase());
 
-    for (let i = 0; i < toFetch.length; i++) {
-        const entry = toFetch[i];
-        const pageHtml = pages[i].status === 'fulfilled' ? pages[i].value : null;
+        if (!titleMatch || !linkMatch) continue;
 
-        // Get OG description + full page text for deadline extraction
-        let fullText = '';
-        if (pageHtml) {
-            const ogMatch = pageHtml.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
-            const bodyText = strip(pageHtml.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, ''));
-            fullText = (ogMatch ? decode(ogMatch[1]) : '') + ' ' + bodyText.substring(0, 2000);
-        } else {
-            // Fallback: use listing snippet
-            const start = entry.idx;
-            const end = i + 1 < entries.length ? entries[i + 1].idx : html.length;
-            fullText = strip(html.substring(start, end).replace(/<h2[\s\S]*?<\/h2>/gi, '')).substring(0, 500);
+        const title = decode(titleMatch[1].trim());
+        const link = linkMatch[1].trim();
+        // Since the main RSS feed has everything, filter strictly for competitions
+        const isNatjecaj = cats.includes('natječaji') || /natječaj|poziv|prijav/i.test(title);
+        if (!isNatjecaj) continue;
+
+        const fullText = strip(contentMatch ? contentMatch[1] : title);
+        const deadline = findDate(fullText);
+        const status = detectStatus(title + ' ' + fullText, deadline);
+        if (isStale(deadline) || isOldByTitle(title)) continue;
+
+        let published_date = null;
+        if (pubDateMatch) {
+            const d = new Date(pubDateMatch[1]);
+            if (!isNaN(d)) published_date = d.toISOString().split('T')[0];
         }
 
-        const deadline = findDate(fullText);
-        const status = detectStatus(entry.title + ' ' + fullText, deadline);
-        if (isStale(deadline)) continue;
-
-        const published_date = findPublishedDate(pageHtml, entry.link);
         competitions.push({
-            title: entry.title, link: entry.link,
+            title, link,
             org: extractOrg(fullText) || 'HDD / dizajn.hr',
-            category: detectCategory(entry.title + ' ' + fullText),
+            category: detectCategory(title + ' ' + fullText),
             status, deadline, prize: extractPrize(fullText),
             published_date, scraped_at: SCRAPED_AT,
         });
@@ -591,46 +589,52 @@ async function scrapeDezeen() {
 }
 
 // ════════════════════════════════════════════
-// SOURCE 14: Vizkultura.hr — Regional visual arts portal
+// SOURCE 14: Vizkultura.hr — RSS feed parsing
 // ════════════════════════════════════════════
 async function scrapeVizkultura() {
-    console.log('📡 [vizkultura.hr] Fetching...');
-    const html = await safeFetch('https://vizkultura.hr/tag/natjecaj/');
-    if (!html) return [];
+    console.log('📡 [vizkultura.hr] Fetching RSS feed...');
+    const xml = await safeFetch('https://vizkultura.hr/feed/');
+    if (!xml) return [];
 
+    const itemRe = /<item>([\s\S]*?)<\/item>/gi;
+    let m; const seen = new Set(); const competitions = [];
 
-    const seen = new Set(); const competitions = [];
-    let m;
+    while ((m = itemRe.exec(xml)) !== null) {
+        const itemXml = m[1];
 
-    // Extract article links with their titles
-    const articles = [];
-    const linkMatches = [...html.matchAll(/<a[^>]*href="(https:\/\/vizkultura\.hr\/[^"]+\/)"[^>]*>/gi)];
-    const titleMatches = [...html.matchAll(/<h3[^>]*>([^<]+)<\/h3>/gi)];
+        const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/i) || itemXml.match(/<title>(.*?)<\/title>/i);
+        const linkMatch = itemXml.match(/<link>(.*?)<\/link>/i);
+        const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/i);
+        const contentMatch = itemXml.match(/<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i) || itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
+        const cats = [...itemXml.matchAll(/<category><!\[CDATA\[(.*?)\]\]><\/category>/gi)].map(c => c[1].toLowerCase());
 
-    for (const tm of titleMatches) {
-        const title = decode(tm[1].trim());
-        // Find nearest link before this title
-        const nearbyHtml = html.substring(Math.max(0, tm.index - 300), tm.index + 300);
-        const linkMatch = nearbyHtml.match(/href="(https:\/\/vizkultura\.hr\/[^"]+\/)"/i);
-        if (!linkMatch) continue;
-        const link = linkMatch[1];
-        if (seen.has(link) || link.includes('/tag/') || link.includes('/page/')) continue;
-        if (!/natječaj|rezultat|prijav|poziv|nagrada|izložba|zgraf|erste|salon/i.test(title)) continue;
+        if (!titleMatch || !linkMatch) continue;
+
+        const title = decode(titleMatch[1].trim());
+        const link = linkMatch[1].trim();
+        if (seen.has(link)) continue;
+
+        const isNatjecaj = cats.some(c => c.includes('natječaji')) || /natječaj|rezultat|prijav|poziv|nagrada|izložba|zgraf|erste|salon/i.test(title);
+        if (!isNatjecaj) continue;
         seen.add(link);
 
-        // Extract date from nearby text (DD-MM-YYYY format used by vizkultura)
-        const dateMatch = nearbyHtml.match(/(\d{2})-(\d{2})-(\d{4})/);
-        const deadline = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : null;
+        const fullText = strip(contentMatch ? contentMatch[1] : title);
+        const deadline = findDate(fullText);
+        const status = detectStatus(title, deadline);
+        if (isStale(deadline) || isOldByTitle(title)) continue;
 
-        // vizkultura uses DD-MM-YYYY as article date, use it as published_date
-        const published_date = dateMatch ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}` : null;
+        let published_date = null;
+        if (pubDateMatch) {
+            const d = new Date(pubDateMatch[1]);
+            if (!isNaN(d)) published_date = d.toISOString().split('T')[0];
+        }
+
         competitions.push({
             title, link, org: 'Vizkultura',
-            category: detectCategory(title), status: detectStatus(title, deadline),
+            category: detectCategory(title), status,
             deadline, prize: 'Vidi detalje',
             published_date, scraped_at: SCRAPED_AT,
         });
-        /* removed limit */
     }
     console.log(`  ✅ [vizkultura.hr] ${competitions.length} competitions`);
     return competitions;
