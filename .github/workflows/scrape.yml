@@ -2,8 +2,8 @@ name: Scrape Design Competitions
 
 on:
   schedule:
-    # Run every 12 hours
-    - cron: '0 */12 * * *'
+    # Run every 4 hours
+    - cron: '0 */4 * * *'
   workflow_dispatch:
     # Allow manual trigger from GitHub Actions UI
 

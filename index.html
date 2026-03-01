@@ -142,8 +142,19 @@
                     id="btn-Novosti">📰 Novosti</button>
             </nav>
 
-            <div class="flex justify-center mb-6">
-                <div class="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
+            <div class="flex flex-col md:flex-row justify-center items-center gap-4 mb-6">
+                <!-- Search box -->
+                <div
+                    class="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm w-full md:w-96">
+                    <span class="text-gray-400">🔍</span>
+                    <input type="text" id="search-input" oninput="applySorting()"
+                        placeholder="Pretraži prema nazivu ili organizatoru..."
+                        class="w-full text-sm font-medium text-gray-700 bg-transparent border-none focus:ring-0 outline-none">
+                </div>
+
+                <!-- Sorting -->
+                <div
+                    class="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm whitespace-nowrap">
                     <span class="text-sm font-medium text-gray-500">↕ Sortiranje:</span>
                     <select id="sort-select" onchange="applySorting()"
                         class="text-sm font-semibold text-gray-700 bg-transparent border-none focus:ring-0 cursor-pointer outline-none">
@@ -153,7 +164,9 @@
                 </div>
             </div>
 
-            <div class="flex justify-center mb-10">
+            <div class="flex flex-col items-center gap-2 justify-center mb-10">
+                <span id="competition-count"
+                    class="text-sm font-semibold text-gray-600 bg-gray-200 px-3 py-1 rounded-full hidden"></span>
                 <span id="last-updated" class="text-sm text-gray-400 italic"></span>
             </div>
 
@@ -743,16 +756,35 @@
             const container = document.getElementById('competitions-container');
             container.innerHTML = '';
 
+            const searchInput = document.getElementById('search-input');
+            const searchQuery = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
             const filteredData = competitionsData.filter(comp => {
-                if (filterStr === 'Sve') return comp.status !== 'Novosti';
-                return comp.status === filterStr;
+                let statusMatch = (filterStr === 'Sve') ? (comp.status !== 'Novosti') : (comp.status === filterStr);
+
+                let searchMatch = true;
+                if (searchQuery) {
+                    const titleMatch = comp.title ? comp.title.toLowerCase().includes(searchQuery) : false;
+                    const orgMatch = comp.org ? comp.org.toLowerCase().includes(searchQuery) : false;
+                    searchMatch = titleMatch || orgMatch;
+                }
+
+                return statusMatch && searchMatch;
             });
+
+            const countEl = document.getElementById('competition-count');
+            if (countEl) {
+                countEl.textContent = `Prikazano ${filteredData.length} natječaja`;
+                countEl.className = filteredData.length > 0
+                    ? "text-sm font-semibold text-gray-600 bg-gray-200 px-3 py-1 rounded-full"
+                    : "hidden";
+            }
 
             if (filteredData.length === 0) {
                 container.innerHTML = `
                     <div class="col-span-1 md:col-span-2 text-center py-16">
                         <p class="text-5xl mb-4">📭</p>
-                        <p class="text-gray-500 font-medium text-lg">Trenutno nema natječaja u ovoj kategoriji.</p>
+                        <p class="text-gray-500 font-medium text-lg">Trenutno nema natječaja u ovoj kategoriji ili pod tim pojmom.</p>
                     </div>`;
                 return;
             }

@@ -4,8 +4,14 @@
 // Usage: node scrape.mjs
 // Env: SUPABASE_URL, SUPABASE_KEY
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://erimkexlkybipsdutsfd.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error('❌ FATAL: SUPABASE_URL and SUPABASE_KEY environment variables must be set.');
+    process.exit(1);
+}
+
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (like Gecko) Chrome/131.0 Safari/537.36';
 const SCRAPED_AT = new Date().toISOString();
 
@@ -20,9 +26,14 @@ async function safeFetch(url, retries = 3) {
     for (let i = 0; i < retries; i++) {
         try {
             const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
-            return r.ok ? await r.text() : null;
+            if (r.ok) return await r.text();
+            console.warn(`  ⚠️  [${r.status}] ${url}`);
+            return null;
         } catch (e) {
-            if (i === retries - 1) return null;
+            if (i === retries - 1) {
+                console.warn(`  ❌ Fetch failed: ${url} (${e.message})`);
+                return null;
+            }
             await new Promise(res => setTimeout(res, 2000));
         }
     }
@@ -32,23 +43,28 @@ async function safeFetch(url, retries = 3) {
 const CRO = { 'siječnja': '01', 'veljače': '02', 'ožujka': '03', 'travnja': '04', 'svibnja': '05', 'lipnja': '06', 'srpnja': '07', 'kolovoza': '08', 'rujna': '09', 'listopada': '10', 'studenoga': '11', 'studenog': '11', 'prosinca': '12' };
 const ENG = { january: '01', february: '02', march: '03', april: '04', may: '05', june: '06', july: '07', august: '08', september: '09', october: '10', november: '11', december: '12', jan: '01', feb: '02', mar: '03', apr: '04', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
 
-function findDate(text) {
-    if (!text) return null;
-    // "26. siječnja 2026" or "5. prosinca 2025"
-    let m = text.match(/(\d{1,2})\.\s*(siječnja|veljače|ožujka|travnja|svibnja|lipnja|srpnja|kolovoza|rujna|listopada|studenoga|studenog|prosinca)\s*(\d{4})/i);
+function extractDateFromText(t) {
+    let m = t.match(/(\d{1,2})\.\s*(siječnja|veljače|ožujka|travnja|svibnja|lipnja|srpnja|kolovoza|rujna|listopada|studenoga|studenog|prosinca)\s*(\d{4})/i);
     if (m && CRO[m[2].toLowerCase()]) return `${m[3]}-${CRO[m[2].toLowerCase()]}-${m[1].padStart(2, '0')}`;
-    // "5.12.2025"
-    m = text.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    m = t.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
     if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-    // "February 20, 2026" or "20 February 2026"
-    m = text.match(/(\w+)\s+(\d{1,2}),?\s*(\d{4})/i);
+    m = t.match(/(\w+)\s+(\d{1,2}),?\s*(\d{4})/i);
     if (m && ENG[m[1].toLowerCase()]) return `${m[3]}-${ENG[m[1].toLowerCase()]}-${m[2].padStart(2, '0')}`;
-    m = text.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/i);
+    m = t.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/i);
     if (m && ENG[m[2].toLowerCase()]) return `${m[3]}-${ENG[m[2].toLowerCase()]}-${m[1].padStart(2, '0')}`;
-    // "2026-02-20"
-    m = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+    m = t.match(/(\d{4})-(\d{2})-(\d{2})/);
     if (m) return m[0];
     return null;
+}
+
+function findDate(text) {
+    if (!text) return null;
+    const kwMatch = text.match(/(?:rok|deadline|closing|closes?|expires?|do|prijav[ae]\s+do)[:\s]+(.{0,50})/i);
+    if (kwMatch) {
+        const d = extractDateFromText(kwMatch[1]);
+        if (d) return d;
+    }
+    return extractDateFromText(text);
 }
 
 function fromRemaining(str) {
@@ -103,17 +119,17 @@ function isOldByTitle(title) {
 
 function detectCategory(t) {
     t = t.toLowerCase();
-    if (/vizualni identitet|visual identity|logotip|brand/i.test(t)) return 'Vizualni identitet';
-    if (/ilustraci|illustrat/i.test(t)) return 'Ilustracija';
-    if (/knjig|book/i.test(t)) return 'Dizajn knjige';
-    if (/\bux\b|\bui\b|web|digital|interaction/i.test(t)) return 'UX/UI dizajn';
-    if (/plakat|poster/i.test(t)) return 'Grafički dizajn';
-    if (/modn|fashion/i.test(t)) return 'Modni dizajn';
-    if (/produkt|product|industrijski|industrial/i.test(t)) return 'Industrijski dizajn';
-    if (/architectur|arhitektur|interior/i.test(t)) return 'Arhitektura';
-    if (/typograph|tipografi|type design|font/i.test(t)) return 'Tipografija';
-    if (/packaging|package|ambalaž/i.test(t)) return 'Dizajn ambalaže';
-    if (/communicat|komunikaci/i.test(t)) return 'Komunikacijski dizajn';
+    if (/vizualni identitet|visual identity|logotip|brand/.test(t)) return 'Vizualni identitet';
+    if (/ilustraci|illustrat/.test(t)) return 'Ilustracija';
+    if (/knjig|book/.test(t)) return 'Dizajn knjige';
+    if (/\bux\b|\bui\b|web|digital|interaction/.test(t)) return 'UX/UI dizajn';
+    if (/plakat|poster/.test(t)) return 'Grafički dizajn';
+    if (/modn|fashion/.test(t)) return 'Modni dizajn';
+    if (/produkt|product|industrijski|industrial/.test(t)) return 'Industrijski dizajn';
+    if (/architectur|arhitektur|interior/.test(t)) return 'Arhitektura';
+    if (/typograph|tipografi|type design|font/.test(t)) return 'Tipografija';
+    if (/packaging|package|ambalaž/.test(t)) return 'Dizajn ambalaže';
+    if (/communicat|komunikaci/.test(t)) return 'Komunikacijski dizajn';
     return 'Grafički dizajn';
 }
 
@@ -261,7 +277,7 @@ async function scrapeContestWatchers() {
             title: e.title, link: externalLink,
             org: e.title.replace(/\s*\d{4}.*$/, '').replace(/\s*[-–:].*$/, '').substring(0, 50) || 'Međunarodni natječaj',
             category: detectCategory(e.title),
-            status: 'Aktivno', deadline,
+            status: detectStatus(e.title, deadline), deadline,
             prize: e.free ? 'Besplatna prijava' : 'Vidi detalje',
             published_date, scraped_at: SCRAPED_AT,
         });
@@ -335,9 +351,9 @@ async function scrapeADesign() {
     const deadline = findDate(text);
     const published_date = findPublishedDate(html, 'https://competition.adesignaward.com/registration.html');
     return [{
-        title: "A' Design Award & Competition 2026", link: 'https://competition.adesignaward.com/registration.html',
+        title: `A' Design Award & Competition ${new Date().getFullYear()}`, link: 'https://competition.adesignaward.com/registration.html',
         org: "A' Design Award", category: 'Grafički dizajn',
-        status: 'Aktivno', deadline,
+        status: detectStatus('', deadline), deadline,
         prize: 'Međunarodna nagrada + promocija',
         published_date, scraped_at: SCRAPED_AT,
     }];
@@ -469,7 +485,7 @@ async function scrapeDesignEuropa() {
     const deadline = findDate(text);
     const published_date = findPublishedDate(html, 'https://www.euipo.europa.eu/en/designeuropa-awards');
     return [{
-        title: 'DesignEuropa Awards 2026 (Ljubljana)', link: 'https://www.euipo.europa.eu/en/designeuropa-awards',
+        title: `DesignEuropa Awards ${new Date().getFullYear()} (Ljubljana)`, link: 'https://www.euipo.europa.eu/en/designeuropa-awards',
         org: 'EUIPO / European Commission', category: 'Industrijski dizajn',
         status: detectStatus(text, deadline), deadline,
         prize: 'Europska nagrada za dizajn',
@@ -998,83 +1014,98 @@ async function upsertToSupabase(competitions) {
     }
     const unique = [...seen.values()];
 
-    // Insert new data first, then delete old data only on success
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji_new`, {
-        method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' },
-        body: JSON.stringify(unique),
-    });
-    // If the staging table doesn't exist, fall back to delete-then-insert
-    if (res.status === 404) {
-        console.log('  ℹ️  Staging table not found, using direct replace...');
-        await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?title=neq.___KEEP___`, { method: 'DELETE', headers });
-        const directRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
-            method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' },
-            body: JSON.stringify(unique),
-        });
-        if (!directRes.ok) throw new Error(`Insert failed: ${directRes.status} — ${await directRes.text()}`);
-        const inserted = await directRes.json();
-        console.log(`  ✅ Inserted ${inserted.length} unique competitions`);
-        return;
+    // Fetch all existing IDs to clean up later
+    let oldIds = [];
+    try {
+        const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?select=id`, { headers });
+        if (existingRes.ok) {
+            const existingData = await existingRes.json();
+            oldIds = existingData.map(item => item.id);
+        }
+    } catch (e) {
+        console.error('  ⚠️  Could not fetch existing IDs for cleanup:', e);
     }
-    if (!res.ok) throw new Error(`Insert failed: ${res.status} — ${await res.text()}`);
 
-    // Staging insert succeeded — now safe to clear and copy
-    await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?title=neq.___KEEP___`, { method: 'DELETE', headers });
-    const copyRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
+    // Insert all new data directly to the main table
+    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
         method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' },
         body: JSON.stringify(unique),
     });
-    if (!copyRes.ok) throw new Error(`Copy insert failed: ${copyRes.status} — ${await copyRes.text()}`);
-    // Clean up staging table
-    await fetch(`${SUPABASE_URL}/rest/v1/natjecaji_new?id=gt.0`, { method: 'DELETE', headers });
-    const inserted = await copyRes.json();
-    console.log(`  ✅ Inserted ${inserted.length} unique competitions`);
+
+    if (!insertRes.ok) throw new Error(`Insert failed: ${insertRes.status} — ${await insertRes.text()}`);
+
+    const inserted = await insertRes.json();
+    console.log(`  ✅ Inserted ${inserted.length} competitions`);
+
+    // Only delete the old ones if insert succeeded
+    if (oldIds.length > 0) {
+        console.log(`  🗑️ Cleaning up ${oldIds.length} old entries...`);
+        for (let i = 0; i < oldIds.length; i += 100) {
+            const chunk = oldIds.slice(i, i + 100);
+            await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?id=in.(${chunk.join(',')})`, { method: 'DELETE', headers });
+        }
+    }
 }
 
 // ════════════════════════════════════════════
 // Main — 22 sources
 // ════════════════════════════════════════════
+async function runScraper(name, fn) {
+    const start = Date.now();
+    try {
+        const value = await fn();
+        const duration = Date.now() - start;
+        console.log(`  ⏱️ [${name}] completed in ${duration}ms`);
+        return { status: 'fulfilled', value };
+    } catch (err) {
+        const duration = Date.now() - start;
+        console.log(`  ⏱️ [${name}] failed in ${duration}ms`);
+        return { status: 'rejected', reason: err };
+    }
+}
+
 async function main() {
     try {
         console.log('🎯 DizajnRadar Scraper v6 — 22 sources, deep scrape\n');
-        const results = await Promise.allSettled([
-            // 🇭🇷 Croatia — Design associations
-            scrapeDizajnHr(),         // 1. HDD
-            scrapeHdlu(),             // 2. HDLU
-            scrapePogon(),            // 3. Pogon
-            scrapeVizkultura(),       // 4. Vizkultura
-            scrapeHura(),             // 5. HURA (BalCannes, IdejaX, Effie)
-            // 🇭🇷 Croatia — Public sector
-            scrapeCityPortals(),      // 6. Zagreb, Split, Rijeka
-            // 🇸🇮 Slovenia
-            scrapeBrumen(),           // 7. Brumen + TAM-TAM
-            scrapeDos(),              // 8. DOS
-            // 🇷🇸 Serbia
-            scrapeO3one(),            // 9. O3ONE Belgrade
-            // 🌐 Southeast Europe
-            scrapeBigSee(),           // 10. BIG SEE
-            scrapeFluid(),            // 11. FLUID
-            scrapeDesignEuropa(),     // 12. DesignEuropa
-            // 🌍 International — Directories
-            scrapeContestWatchers(),  // 13. ContestWatchers
-            scrapeADesign(),          // 14. A' Design
-            scrapeGraphicCompetitions(), // 15. graphiccompetitions.com
-            scrapeDezeen(),           // 16. Dezeen
-            scrapeEuropeanDesign(),   // 17. European Design Awards
-            scrapeDexigner(),         // 18. Dexigner
-            // 🌍 International — Crowdsourcing
-            scrapeCrowdsourcing(),    // 19. 99designs + DesignCrowd
-            // 🇸🇮 Slovenia — Additional
-            scrapeCzk(),              // 20. Center za kreativnost
-            // 🇭🇷 Croatia — Additional
-            scrapeHuluSplit(),        // 21. HULU Split
-            // 🌐 Regional — Forums
-            scrapeDizajnZona(),       // 22. Dizajn Zona
-        ]);
+
+        const sources = [
+            { name: 'HDD', fn: scrapeDizajnHr },
+            { name: 'HDLU', fn: scrapeHdlu },
+            { name: 'Pogon', fn: scrapePogon },
+            { name: 'Vizkultura', fn: scrapeVizkultura },
+            { name: 'HURA', fn: scrapeHura },
+            { name: 'Gradovi', fn: scrapeCityPortals },
+            { name: 'Brumen', fn: scrapeBrumen },
+            { name: 'DOS', fn: scrapeDos },
+            { name: 'O3ONE', fn: scrapeO3one },
+            { name: 'BIG SEE', fn: scrapeBigSee },
+            { name: 'FLUID', fn: scrapeFluid },
+            { name: 'DesignEuropa', fn: scrapeDesignEuropa },
+            { name: 'ContestWatchers', fn: scrapeContestWatchers },
+            { name: "A' Design", fn: scrapeADesign },
+            { name: 'GraphicCompet', fn: scrapeGraphicCompetitions },
+            { name: 'Dezeen', fn: scrapeDezeen },
+            { name: 'EuroDesign', fn: scrapeEuropeanDesign },
+            { name: 'Dexigner', fn: scrapeDexigner },
+            { name: 'Crowdsourcing', fn: scrapeCrowdsourcing },
+            { name: 'CzK', fn: scrapeCzk },
+            { name: 'HULU Split', fn: scrapeHuluSplit },
+            { name: 'Dizajn Zona', fn: scrapeDizajnZona },
+        ];
+
+        const results = [];
+        const BATCH_SIZE = 4;
+        for (let i = 0; i < sources.length; i += BATCH_SIZE) {
+            const batch = sources.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.all(batch.map(s => runScraper(s.name, s.fn)));
+            results.push(...batchResults);
+        }
+
         const all = [];
-        for (const r of results) {
+        for (let i = 0; i < results.length; i++) {
+            const r = results[i];
             if (r.status === 'fulfilled') all.push(...r.value);
-            else console.error('  ❌ Source failed:', r.reason?.message);
+            else console.error(`  ❌ Source ${sources[i].name} failed:`, r.reason?.message);
         }
         console.log(`\n📊 Total from all sources: ${all.length}`);
         if (all.length === 0) { console.log('⚠️  No competitions found.'); process.exit(1); }
