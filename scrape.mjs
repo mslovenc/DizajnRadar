@@ -979,23 +979,25 @@ async function upsertToSupabase(competitions) {
     console.log(`💾 Writing ${competitions.length} competitions to Supabase...`);
     const headers = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
 
-    // Fetch existing entries to preserve original scraped_at
+    // Fetch existing entries to preserve original scraped_at and find stale entries to delete
     let existingMap = new Map();
+    let existingIdsByTitle = new Map();
     try {
-        const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?select=title,scraped_at`, { headers });
+        const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?select=id,title,scraped_at`, { headers });
         if (existingRes.ok) {
             const existingData = await existingRes.json();
             for (const item of existingData) {
                 if (!item.title) continue;
+                if (item.id) existingIdsByTitle.set(item.title, item.id);
                 const key = item.title.toLowerCase().replace(/[^a-zčćžšđ0-9]/g, '').substring(0, 40);
                 existingMap.set(key, item.scraped_at);
             }
         }
     } catch (e) {
-        console.error('  ⚠️  Could not fetch existing data to preserve scraped_at:', e);
+        console.error('  ⚠️  Could not fetch existing data:', e);
     }
 
-    // Filter out stale entries (old deadlines + old year references in title)
+    // Filter out stale entries
     const fresh = competitions.filter(c => {
         if (isStale(c.deadline)) { console.log(`  🗑️ Stale (old deadline): ${c.title.substring(0, 50)}`); return false; }
         if (isOldByTitle(c.title)) { console.log(`  🗑️ Stale (old year): ${c.title.substring(0, 50)}`); return false; }
@@ -1014,34 +1016,31 @@ async function upsertToSupabase(competitions) {
     }
     const unique = [...seen.values()];
 
-    // Fetch all existing IDs to clean up later
-    let oldIds = [];
-    try {
-        const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?select=id`, { headers });
-        if (existingRes.ok) {
-            const existingData = await existingRes.json();
-            oldIds = existingData.map(item => item.id);
-        }
-    } catch (e) {
-        console.error('  ⚠️  Could not fetch existing IDs for cleanup:', e);
-    }
-
-    // Insert all new data directly to the main table
-    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji`, {
-        method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' },
+    // Insert or update all new data
+    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?on_conflict=title`, {
+        method: 'POST',
+        headers: { ...headers, 'Prefer': 'resolution=merge-duplicates,return=representation' },
         body: JSON.stringify(unique),
     });
 
     if (!insertRes.ok) throw new Error(`Insert failed: ${insertRes.status} — ${await insertRes.text()}`);
 
     const inserted = await insertRes.json();
-    console.log(`  ✅ Inserted ${inserted.length} competitions`);
+    console.log(`  ✅ Inserted/Updated ${inserted.length} competitions`);
 
-    // Only delete the old ones if insert succeeded
-    if (oldIds.length > 0) {
-        console.log(`  🗑️ Cleaning up ${oldIds.length} old entries...`);
-        for (let i = 0; i < oldIds.length; i += 100) {
-            const chunk = oldIds.slice(i, i + 100);
+    // Figure out which old items are no longer present in 'unique' so we can delete them
+    const uniqueTitles = new Set(unique.map(c => c.title));
+    const oldIdsToDelete = [];
+    for (const [title, id] of existingIdsByTitle.entries()) {
+        if (!uniqueTitles.has(title)) {
+            oldIdsToDelete.push(id);
+        }
+    }
+
+    if (oldIdsToDelete.length > 0) {
+        console.log(`  🗑️ Cleaning up ${oldIdsToDelete.length} obsolete entries...`);
+        for (let i = 0; i < oldIdsToDelete.length; i += 100) {
+            const chunk = oldIdsToDelete.slice(i, i + 100);
             await fetch(`${SUPABASE_URL}/rest/v1/natjecaji?id=in.(${chunk.join(',')})`, { method: 'DELETE', headers });
         }
     }
